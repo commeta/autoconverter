@@ -1,5 +1,5 @@
 # Autoconverter
-Background converting png or jpeg files to webp format.
+Background converting png or jpeg files to webp format on Linux.
 
 Бета версия фонового конвертера графических файлов.
 Данная программа работает в фоновом режиме, ведет наблюдение за указанными каталогами.
