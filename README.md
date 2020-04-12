@@ -7,5 +7,8 @@ Background converting png or jpeg files to webp format.
 
 Поддерживает: копирование, переименование, перемещение, удаление файлов.
 
+Требования:
+Linux, Python >= 3.5, Pyinotify, Webptools
+
 Установка:
 pip3 install pyinotify webptools
