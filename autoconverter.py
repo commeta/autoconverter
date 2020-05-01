@@ -15,11 +15,13 @@
 # https://github.com/scionoftech/webptools
 # yum install python-inotify.noarch python-inotify-examples.noarch 
 
+
 import pyinotify
 import multiprocessing
 import time
 from webptools import webplib as webp
 from pathlib import Path
+
 
 class Ev(object):
     # Event struct
@@ -32,6 +34,7 @@ class Ev(object):
     path = ""
     pathname = ""
     src_pathname = ""
+
 
 class OnWriteHandler(pyinotify.ProcessEvent):
     # Создание очередей, слушатель inotify ядра
@@ -71,8 +74,10 @@ class OnWriteHandler(pyinotify.ProcessEvent):
         # добавляем элемент в очередь, удаление или переименование
         queue_in.put(event)
 
+
+
 def converter(queue_in, path):
-    # Обработчик очереди в отдельном потоке
+    # Обработчик очереди в отдельном процессе
     filter = {}
     moved = {}
 
@@ -86,6 +91,7 @@ def converter(queue_in, path):
         for key, value in list(filter.items()):
             if value['time'] + 2 < time.time():
                 del filter[key]
+
 
         for p in path:
             if (item + "/").startswith(p + "/"):
@@ -101,6 +107,7 @@ def converter(queue_in, path):
 
                 if item.startswith(dest):  # если это /webp то выход
                     break
+
 
                 if mask == "IN_MOVED_FROM": # Перемещение файла или каталога
                     #print("IN_MOVED_FROM: ", item)
@@ -127,6 +134,7 @@ def converter(queue_in, path):
                         queue_in.put(event)
                         break
 
+
                 if mask == "IN_DELETE" and Path(dest_item).is_file():
                     print("Delete: ", dest_item)
                     Path(dest_item).unlink()  # Удаляем файл
@@ -143,6 +151,7 @@ def converter(queue_in, path):
                 else:
                     break
 
+
                 if mask == "IN_MOVED_TO":
                     src_pathname = getattr(event, 'src_pathname', False)
                     #print("IN_MOVED_TO: ", item, " ", src_pathname)
@@ -156,7 +165,8 @@ def converter(queue_in, path):
                             break
                         else:  # Если файл то стартуем конвертер
                             mask = "IN_CLOSE_WRITE"
-                            
+
+
                 if mask == "IN_CLOSE_WRITE" and Path(item).is_file():
                     # отсеиваем глюки, дубликаты, проверка предыдущего цикла
                     if Path(dest_item).is_file() and Path(dest_item).stat().st_mtime > Path(item).stat().st_mtime:
@@ -183,7 +193,7 @@ def converter(queue_in, path):
         # Сообщаем, что элемент очереди queue_in обработан с помощью метода task_done
         queue_in.task_done()
 
-        
+
 def monitor(path, extension, queue_in):
     # watched events
     mask = pyinotify.IN_DELETE | pyinotify.IN_MOVED_TO | pyinotify.IN_MOVED_FROM | pyinotify.IN_CLOSE_WRITE
@@ -193,6 +203,7 @@ def monitor(path, extension, queue_in):
     wm.add_watch(path, mask, rec=True, auto_add=True)
     print ('==> Start monitoring %s (type c^c to exit)' % path)
     notifier.loop()
+
 
 def rm_tree(pth):
     # удаление подкаталогов
@@ -243,8 +254,6 @@ def convert_tree(pth):
 
                 if child.is_file():  # Добавить в очередь если отсутствует или новее
                     dest_item = str(child).replace(p, dest)
-                    print(dest_item)
-                    print(child)
 
                     if not Path(dest_item).is_file():
                         event.mask = "IN_CLOSE_WRITE"
@@ -285,4 +294,3 @@ if __name__ == '__main__':
 
     #queue_in.terminate()
     #queue_in.join()  # ждем пока чтобы клиент успел обработать все элементы
-
