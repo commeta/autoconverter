@@ -10,16 +10,16 @@
 #
 # Dependencies:
 #   Linux, Python >= 3.5, Pyinotify, Webptools
+# http://seb.dbzteam.org/pyinotify/
+# https://github.com/seb-m/pyinotify
+# https://github.com/scionoftech/webptools
+# yum install python-inotify.noarch python-inotify-examples.noarch 
 
-
-import subprocess
-import sys
 import pyinotify
 import multiprocessing
 import time
 from webptools import webplib as webp
 from pathlib import Path
-
 
 class Ev(object):
     # Event struct
@@ -32,7 +32,6 @@ class Ev(object):
     path = ""
     pathname = ""
     src_pathname = ""
-
 
 class OnWriteHandler(pyinotify.ProcessEvent):
     # Создание очередей, слушатель inotify ядра
@@ -72,9 +71,6 @@ class OnWriteHandler(pyinotify.ProcessEvent):
         # добавляем элемент в очередь, удаление или переименование
         queue_in.put(event)
 
-
-
-
 def converter(queue_in, path):
     # Обработчик очереди в отдельном потоке
     filter = {}
@@ -91,7 +87,6 @@ def converter(queue_in, path):
             if value['time'] + 2 < time.time():
                 del filter[key]
 
-
         for p in path:
             if (item + "/").startswith(p + "/"):
                 #Init
@@ -106,7 +101,6 @@ def converter(queue_in, path):
 
                 if item.startswith(dest):  # если это /webp то выход
                     break
-
 
                 if mask == "IN_MOVED_FROM": # Перемещение файла или каталога
                     #print("IN_MOVED_FROM: ", item)
@@ -133,16 +127,12 @@ def converter(queue_in, path):
                         queue_in.put(event)
                         break
 
-
-
                 if mask == "IN_DELETE" and Path(dest_item).is_file():
                     print("Delete: ", dest_item)
                     Path(dest_item).unlink()  # Удаляем файл
 
                     # Удаляем подкаталог если пустой
                     rm_empty_dir(base_dest_item)
-
-
 
                 # Если дубль события то выходим
                 if Path(item).exists():
@@ -152,9 +142,6 @@ def converter(queue_in, path):
                         item).stat().st_mtime, 'mask': mask}
                 else:
                     break
-
-
-
 
                 if mask == "IN_MOVED_TO":
                     src_pathname = getattr(event, 'src_pathname', False)
@@ -169,10 +156,7 @@ def converter(queue_in, path):
                             break
                         else:  # Если файл то стартуем конвертер
                             mask = "IN_CLOSE_WRITE"
-
-
-
-
+                            
                 if mask == "IN_CLOSE_WRITE" and Path(item).is_file():
                     # отсеиваем глюки, дубликаты, проверка предыдущего цикла
                     if Path(dest_item).is_file() and Path(dest_item).stat().st_mtime > Path(item).stat().st_mtime:
@@ -198,13 +182,8 @@ def converter(queue_in, path):
 
         # Сообщаем, что элемент очереди queue_in обработан с помощью метода task_done
         queue_in.task_done()
-        #time.sleep(1)  # Ждем 1 секунды
 
-
-
-
-
-
+        
 def monitor(path, extension, queue_in):
     # watched events
     mask = pyinotify.IN_DELETE | pyinotify.IN_MOVED_TO | pyinotify.IN_MOVED_FROM | pyinotify.IN_CLOSE_WRITE
@@ -214,11 +193,6 @@ def monitor(path, extension, queue_in):
     wm.add_watch(path, mask, rec=True, auto_add=True)
     print ('==> Start monitoring %s (type c^c to exit)' % path)
     notifier.loop()
-
-
-
-
-
 
 def rm_tree(pth):
     # удаление подкаталогов
@@ -244,9 +218,6 @@ def rm_empty_dir(pth):
             Path(pth).rmdir()
 
 
-
-
-
 def convert_tree(pth):
     # Создание очереди при запуске, или событии с каталогами
     global queue_in, extension, path
@@ -257,23 +228,23 @@ def convert_tree(pth):
             event = Ev()
             dest = p + result_path
 
-            for child in Path(pth).glob('*'):
+            for child in Path(pth).glob('**/*'):
                 # если это /webp то удалим отсутствующие копии
-                # теряет на старте файлы
-                if (str(child) + "/").startswith(dest + "/") and Path(child).is_file():
+                if (str(child) + "/").startswith(dest + "/") and child.is_file():
                     dest_item = str(child).replace(dest, p)
                     if not Path(dest_item).is_file():
                         print("Delete: ", child)
                         Path(child).unlink()
                         rm_empty_dir(Path(child).parent)
-
+                    continue
 
                 if child.is_file() and all(not str(child).lower().endswith(ext) for ext in extensions):
                     continue
 
-
-                if child.is_file(): # Добавить в очередь если отсутствует или новее
+                if child.is_file():  # Добавить в очередь если отсутствует или новее
                     dest_item = str(child).replace(p, dest)
+                    print(dest_item)
+                    print(child)
 
                     if not Path(dest_item).is_file():
                         event.mask = "IN_CLOSE_WRITE"
@@ -283,11 +254,6 @@ def convert_tree(pth):
                         event.mask = "IN_CLOSE_WRITE"
                         event.pathname = str(child)
                         queue_in.put(event)
-
-
-                if child.is_dir():
-                    convert_tree(str(child))
-
 
         break
 
@@ -305,14 +271,6 @@ if __name__ == '__main__':
     result_ext = False # Если True то ставим расширение *.webp, иначе оставляем оригинальное
     result_path = "/webp" # Если false то в том же каталоге
 
-# Доделать!
-# nice
-# start, stop, reload
-# daemonize
-# log
-# pid file
-# Тест, создание, удаление, перемещение внутри\снаружи, файлов и каталогов
-
     queue_in = multiprocessing.JoinableQueue()  # объект очереди
     # создаем подпроцесс для клиентской функции
     cons_p = multiprocessing.Process(target=converter, args=(queue_in, path))
@@ -327,3 +285,4 @@ if __name__ == '__main__':
 
     #queue_in.terminate()
     #queue_in.join()  # ждем пока чтобы клиент успел обработать все элементы
+
