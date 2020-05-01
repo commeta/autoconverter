@@ -2,7 +2,7 @@
 
 # Convert all images files in subdirectories, to ~webp/ directory
 # apt install webp
-# Usage ./image2webp.sh /home/t/tutboxing/fanotify/tmp
+# Usage ./image2webp.sh /var/www/www-root/data/www/site.ru
 
 start() {
 	local fullname="$1"
