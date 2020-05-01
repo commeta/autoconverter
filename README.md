@@ -7,8 +7,8 @@ Background converting png or jpeg files to webp format on Linux.
 Массив с путями каталогов для наблюдения можно прописать в файле скрипта:
 ```PYTHON
     path = [
-        "/home/t/tutboxing/tmp",
-        "/home/t/tutboxing/tmp2"
+        "/home/t/fanotify/tmp",
+        "/home/t/fanotify/tmp2"
     ]
 ```
 
