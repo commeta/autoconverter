@@ -273,8 +273,8 @@ if __name__ == '__main__':
     extension = ".jpg,.jpeg,.png"
 
     path = [
-        "/home/t/fanotify/tmp",
-        "/home/t/fanotify/tmp2"
+        "/var/www/www-root/data/www/site.ru",
+        "/var/www/www-root/data/www/site2.ru"
     ]
 
     result_ext = False # Если True то ставим расширение *.webp, иначе оставляем оригинальное
