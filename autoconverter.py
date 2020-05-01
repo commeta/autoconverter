@@ -13,7 +13,7 @@
 # http://seb.dbzteam.org/pyinotify/
 # https://github.com/seb-m/pyinotify
 # https://github.com/scionoftech/webptools
-# yum install python-inotify.noarch python-inotify-examples.noarch 
+# yum install python-inotify.noarch python-inotify-examples.noarch  libwebp-tools.x86_64
 
 
 import pyinotify
