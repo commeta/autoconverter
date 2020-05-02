@@ -220,7 +220,7 @@ def rm_tree(pth): # удаление подкаталогов
             child.unlink()
         else:
             rm_tree(child)
-    pth.rmdir()
+    Path(pth).rmdir()
 
 
 def rm_empty_dir(pth):
@@ -232,7 +232,8 @@ def rm_empty_dir(pth):
 
     if is_empty == True:
         if not str(pth).endswith(result_path):
-            Path(pth).rmdir()
+            print(pth)
+            pth.rmdir()
             return True
     
     return True
@@ -249,11 +250,16 @@ def convert_tree(pth): # Создание очереди при запуске, 
         # если это /webp то удалим отсутствующие копии
         if(str(child) + "/").startswith(dest + "/") and child.is_file():
             dest_item = str(child).replace(dest, pth)
-            if not Path(dest_item).is_file():
-                log(pth, "Delete: " + str(child))
+            if not Path(dest_item).exists():
+                if child.is_file():
+                    log(pth, "Delete: " + str(child))
+                    child.unlink()
+                    #rm_empty_dir()
 
-                Path(child).unlink()
-                rm_empty_dir(Path(child).parent)
+                elif child.is_dir():
+                    log(pth, "Delete dir: " + str(child))
+                    rm_tree(str(child))
+                    
             continue
 
         if child.is_file() and all(not str(child).lower().endswith(ext) for ext in extensions):
@@ -278,7 +284,7 @@ def log(path, str): # Логгер
     with open(path + result_path + "/images.log", "a") as file:
         file.write(str + "\n")
 
-
+        
 if __name__ == '__main__':
     # Required arguments
     extension = ".jpg,.jpeg,.png"
