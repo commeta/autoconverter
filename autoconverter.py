@@ -232,6 +232,41 @@ def rm_empty_dir(pth):
             Path(pth).rmdir()
 
 
+def convert_tree(pth):
+    # Создание очереди при запуске, или событии с каталогами
+    global queue_in, extension, path
+    
+    extensions = extension.split(',')
+    event = Ev()
+    dest = pth + result_path
+
+    for child in Path(pth).glob('**/*'):
+        # если это /webp то удалим отсутствующие копии
+        if(str(child) + "/").startswith(dest + "/") and child.is_file():
+            dest_item = str(child).replace(dest, pth)
+            if not Path(dest_item).is_file():
+                print("Delete: ", child)
+                Path(child).unlink()
+                rm_empty_dir(Path(child).parent)
+            continue
+
+        if child.is_file() and all(not str(child).lower().endswith(ext) for ext in extensions):
+            continue
+
+        if child.is_file():  # Добавить в очередь если отсутствует или новее
+            dest_item = str(child).replace(pth, dest)
+
+            if not Path(dest_item).is_file():
+                event.mask = "IN_CLOSE_WRITE"
+                event.pathname = str(child)
+                queue_in.put(event)
+            elif Path(dest_item).stat().st_mtime < Path(child).stat().st_mtime:
+                event.mask = "IN_CLOSE_WRITE"
+                event.pathname = str(child)
+                queue_in.put(event)
+            time.sleep(0.1)
+
+
 if __name__ == '__main__':
     # Required arguments
     extension = ".jpg,.jpeg,.png"
@@ -252,36 +287,7 @@ if __name__ == '__main__':
 
     time.sleep(0.4)
     for pth in path:
-        extensions = extension.split(',')
-
-        event = Ev()
-        dest = pth + result_path
-
-        for child in Path(pth).glob('**/*'):
-            # если это /webp то удалим отсутствующие копии
-            if(str(child) + "/").startswith(dest + "/") and child.is_file():
-                dest_item = str(child).replace(dest, pth)
-                if not Path(dest_item).is_file():
-                    print("Delete: ", child)
-                    Path(child).unlink()
-                    rm_empty_dir(Path(child).parent)
-                continue
-
-            if child.is_file() and all(not str(child).lower().endswith(ext) for ext in extensions):
-                continue
-
-            if child.is_file():  # Добавить в очередь если отсутствует или новее
-                dest_item = str(child).replace(pth, dest)
-
-                if not Path(dest_item).is_file():
-                    event.mask = "IN_CLOSE_WRITE"
-                    event.pathname = str(child)
-                    queue_in.put(event)
-                elif Path(dest_item).stat().st_mtime < Path(child).stat().st_mtime:
-                    event.mask = "IN_CLOSE_WRITE"
-                    event.pathname = str(child)
-                    queue_in.put(event)
-                time.sleep(0.1)
+        convert_tree(pth)
 
 
     # Blocks monitoring
