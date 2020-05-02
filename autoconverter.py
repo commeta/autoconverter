@@ -212,8 +212,7 @@ def monitor(path, extension, queue_in): # watched events
 
 
 def rm_tree(pth): # удаление подкаталогов
-    pth = Path(pth)
-    for child in pth.glob('*'):
+    for child in Path(pth).glob('*'):
         if child.is_file():
             child.unlink()
         else:
