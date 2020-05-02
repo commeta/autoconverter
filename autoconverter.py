@@ -16,6 +16,8 @@
 # https://github.com/scionoftech/webptools
 # yum install python-inotify.noarch python-inotify-examples.noarch 
 
+from ctypes import cdll
+import os
 import pyinotify
 import multiprocessing
 import time
@@ -77,6 +79,11 @@ class OnWriteHandler(pyinotify.ProcessEvent):
 
 def converter(queue_in, path):
     # Обработчик очереди в отдельном процессе
+
+    pid = os.getpid() # Смена приоритета
+    libc = cdll.LoadLibrary("libc.so.6")
+    libc.setpriority(0, pid, 20)
+
     filter = {}
     moved = {}
 
