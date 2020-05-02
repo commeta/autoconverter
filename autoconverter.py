@@ -189,7 +189,6 @@ def converter(queue_in, path):
                 break
 
         # Сообщаем, что элемент очереди queue_in обработан с помощью метода task_done
-        time.sleep(0.1)
         queue_in.task_done()
 
 
