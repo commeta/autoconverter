@@ -149,8 +149,8 @@ def converter(queue_in, path):
                     Path(dest_item).unlink()  # Удаляем файл
 
                     # Удаляем подкаталог если пустой
-                    if rm_empty_dir(base_dest_item):
-                        log(p, "Delete dir: " + base_dest_item)
+                    if rm_empty_dir(str(base_dest_item)):
+                        log(p, "Delete dir: " + str(base_dest_item))
 
 
                 # Если дубль события то выходим
