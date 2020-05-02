@@ -17,7 +17,6 @@
 # yum install python-inotify.noarch python-inotify-examples.noarch 
 
 from ctypes import cdll
-import os
 import pyinotify
 import multiprocessing
 import time
@@ -77,11 +76,10 @@ class OnWriteHandler(pyinotify.ProcessEvent):
         queue_in.put(event)
 
 
-def converter(queue_in, path):
-    # Обработчик очереди в отдельном процессе
-
-    pid = os.getpid() # Смена приоритета
+def converter(queue_in, path): # Обработчик очереди в отдельном процессе
+    # Смена приоритета
     libc = cdll.LoadLibrary("libc.so.6")
+    pid = libc.getpid()
     libc.setpriority(0, pid, 20)
 
     filter = {}
