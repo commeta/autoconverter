@@ -183,6 +183,7 @@ def converter(queue_in, path):
                     if extension == '.png':
                         webp.cwebp(
                             item, dest_item, "-quiet -pass 10 -m 6 -alpha_q 100 -mt -alpha_filter best -alpha_method 1 -q 80")
+                    
                     break
 
 
@@ -239,6 +240,7 @@ if __name__ == '__main__':
     result_ext = False # Если True то ставим расширение *.webp, иначе оставляем оригинальное
     result_path = "/webp" # Если false то в том же каталоге
 
+
     queue_in = multiprocessing.JoinableQueue()  # объект очереди
     # создаем подпроцесс для клиентской функции
     cons_p = multiprocessing.Process(target=converter, args=(queue_in, path))
@@ -249,38 +251,36 @@ if __name__ == '__main__':
     for pth in path:
         extensions = extension.split(',')
 
-        for p in path:
-            if (pth+"/").startswith(p+"/"):
-                event = Ev()
-                dest = p + result_path
+        if (pth+"/").startswith(pth+"/"):
+            event = Ev()
+            dest = pth + result_path
 
-                for child in Path(pth).glob('**/*'):
-                    # если это /webp то удалим отсутствующие копии
-                    if (str(child) + "/").startswith(dest + "/") and child.is_file():
-                        dest_item = str(child).replace(dest, p)
-                        if not Path(dest_item).is_file():
-                            print("Delete: ", child)
-                            Path(child).unlink()
-                            rm_empty_dir(Path(child).parent)
-                        continue
+            for child in Path(pth).glob('**/*'):
+                # если это /webp то удалим отсутствующие копии
+                if(str(child) + "/").startswith(dest + "/") and child.is_file():
+                    dest_item = str(child).replace(dest, pth)
+                    if not Path(dest_item).is_file():
+                        print("Delete: ", child)
+                        Path(child).unlink()
+                        rm_empty_dir(Path(child).parent)
+                    continue
 
-                    if child.is_file() and all(not str(child).lower().endswith(ext) for ext in extensions):
-                        continue
+                if child.is_file() and all(not str(child).lower().endswith(ext) for ext in extensions):
+                    continue
 
-                    if child.is_file():  # Добавить в очередь если отсутствует или новее
-                        dest_item = str(child).replace(p, dest)
+                if child.is_file():  # Добавить в очередь если отсутствует или новее
+                    dest_item = str(child).replace(pth, dest)
 
-                        if not Path(dest_item).is_file():
-                            event.mask = "IN_CLOSE_WRITE"
-                            event.pathname = str(child)
-                            queue_in.put(event)
-                        elif Path(dest_item).stat().st_mtime < Path(child).stat().st_mtime:
-                            event.mask = "IN_CLOSE_WRITE"
-                            event.pathname = str(child)
-                            queue_in.put(event)
-                        time.sleep(0.1)
-
-            break
+                    if not Path(dest_item).is_file():
+                        event.mask = "IN_CLOSE_WRITE"
+                        event.pathname = str(child)
+                        queue_in.put(event)
+                    elif Path(dest_item).stat().st_mtime < Path(child).stat().st_mtime:
+                        event.mask = "IN_CLOSE_WRITE"
+                        event.pathname = str(child)
+                        queue_in.put(event)
+                    time.sleep(0.1)
+        break
 
 
     # Blocks monitoring
