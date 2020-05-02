@@ -14,7 +14,9 @@
 # http://seb.dbzteam.org/pyinotify/
 # https://github.com/seb-m/pyinotify
 # https://github.com/scionoftech/webptools
+#
 # yum install python-inotify.noarch python-inotify-examples.noarch 
+
 
 from ctypes import cdll
 import pyinotify
@@ -96,6 +98,7 @@ def converter(queue_in, path): # Обработчик очереди в отде
             if value['time'] + 2 < time.time():
                 del filter[key]
 
+
         for p in path:
             if (item + "/").startswith(p + "/"):
                 #Init
@@ -144,7 +147,7 @@ def converter(queue_in, path): # Обработчик очереди в отде
                     Path(dest_item).unlink()  # Удаляем файл
 
                     # Удаляем подкаталог если пустой
-                    if rm_empty_dir(str(base_dest_item)):
+                    if rm_empty_dir(base_dest_item):
                         log(p, "Delete dir: " + str(base_dest_item))
 
 
@@ -222,7 +225,7 @@ def rm_tree(pth): # удаление подкаталогов
 
 def rm_empty_dir(pth):
     is_empty = True  # Удаляем подкаталог если пустой
-    for child in Path(pth).glob("*"):
+    for child in pth.glob("*"):
         if child.is_file() or child.is_dir():
             is_empty = False
             return False
