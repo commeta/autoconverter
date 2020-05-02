@@ -142,7 +142,8 @@ def converter(queue_in, path):
                     Path(dest_item).unlink()  # Удаляем файл
 
                     # Удаляем подкаталог если пустой
-                    rm_empty_dir(base_dest_item)
+                    if rm_empty_dir(base_dest_item):
+                        log(p, "Delete dir: " + base_dest_item)
 
 
                 # Если дубль события то выходим
@@ -226,12 +227,15 @@ def rm_empty_dir(pth):
     for child in Path(pth).glob("*"):
         if child.is_file() or child.is_dir():
             is_empty = False
-            return
+            return False
 
     if is_empty == True:
         if not str(pth).endswith(result_path):
             #print("Remove dir: ", pth)
             Path(pth).rmdir()
+            return True
+    
+    return True
 
 
 def convert_tree(pth):
@@ -248,7 +252,7 @@ def convert_tree(pth):
             dest_item = str(child).replace(dest, pth)
             if not Path(dest_item).is_file():
                 #print("Delete: ", child)
-                log(pth, "Delete: " + child)
+                log(pth, "Delete: " + str(child))
 
                 Path(child).unlink()
                 rm_empty_dir(Path(child).parent)
@@ -271,7 +275,7 @@ def convert_tree(pth):
             time.sleep(0.1)
 
 
-def log(path, str): # # Логгер
+def log(path, str): # Логгер
     global result_path
     with open(path + result_path + "/images.log", "a") as file:
         file.write(str + "\n")
@@ -286,8 +290,7 @@ if __name__ == '__main__':
         "/var/www/www-root/data/www/site2.ru"
     ]
 
-    result_ext = False # Если True то ставим расширение *.webp, иначе оставляем оригинальное
-    result_path = "/webp" # Если false то в том же каталоге
+    result_path = "/webp" # Подкаталог для webp копий
 
     queue_in = multiprocessing.JoinableQueue()  # объект очереди
     # создаем подпроцесс для клиентской функции
