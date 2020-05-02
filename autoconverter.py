@@ -10,11 +10,11 @@
 #
 # Dependencies:
 #   Linux, Python >= 3.5, Pyinotify, Webptools
+#
 # http://seb.dbzteam.org/pyinotify/
 # https://github.com/seb-m/pyinotify
 # https://github.com/scionoftech/webptools
-# yum install python-inotify.noarch python-inotify-examples.noarch  libwebp-tools.x86_64
-
+# yum install python-inotify.noarch python-inotify-examples.noarch 
 
 import pyinotify
 import multiprocessing
@@ -75,7 +75,6 @@ class OnWriteHandler(pyinotify.ProcessEvent):
         queue_in.put(event)
 
 
-
 def converter(queue_in, path):
     # Обработчик очереди в отдельном процессе
     filter = {}
@@ -86,12 +85,11 @@ def converter(queue_in, path):
         mask = event.mask
         is_dir = event.dir
         item = event.pathname
-           
+        
         # Удалим из фильтра события старше 2-х секунд
         for key, value in list(filter.items()):
             if value['time'] + 2 < time.time():
                 del filter[key]
-
 
         for p in path:
             if (item + "/").startswith(p + "/"):
@@ -107,8 +105,7 @@ def converter(queue_in, path):
 
                 if item.startswith(dest):  # если это /webp то выход
                     break
-
-
+                
                 if mask == "IN_MOVED_FROM": # Перемещение файла или каталога
                     #print("IN_MOVED_FROM: ", item)
                     if event.wait == False:
@@ -186,11 +183,13 @@ def converter(queue_in, path):
                     if extension == '.png':
                         webp.cwebp(
                             item, dest_item, "-quiet -pass 10 -m 6 -alpha_q 100 -mt -alpha_filter best -alpha_method 1 -q 80")
+                    break
 
 
                 break
 
         # Сообщаем, что элемент очереди queue_in обработан с помощью метода task_done
+        time.sleep(0.1)
         queue_in.task_done()
 
 
@@ -229,45 +228,6 @@ def rm_empty_dir(pth):
             Path(pth).rmdir()
 
 
-def convert_tree(pth):
-    # Создание очереди при запуске, или событии с каталогами
-    global queue_in, extension, path
-    extensions = extension.split(',')
-
-    for p in path:
-        if (pth+"/").startswith(p+"/"):
-            event = Ev()
-            dest = p + result_path
-
-            for child in Path(pth).glob('**/*'):
-                # если это /webp то удалим отсутствующие копии
-                if (str(child) + "/").startswith(dest + "/") and child.is_file():
-                    dest_item = str(child).replace(dest, p)
-                    if not Path(dest_item).is_file():
-                        print("Delete: ", child)
-                        Path(child).unlink()
-                        rm_empty_dir(Path(child).parent)
-                    continue
-
-                if child.is_file() and all(not str(child).lower().endswith(ext) for ext in extensions):
-                    continue
-
-                if child.is_file():  # Добавить в очередь если отсутствует или новее
-                    dest_item = str(child).replace(p, dest)
-
-                    if not Path(dest_item).is_file():
-                        event.mask = "IN_CLOSE_WRITE"
-                        event.pathname = str(child)
-                        queue_in.put(event)
-                    elif Path(dest_item).stat().st_mtime < Path(child).stat().st_mtime:
-                        event.mask = "IN_CLOSE_WRITE"
-                        event.pathname = str(child)
-                        queue_in.put(event)
-
-        break
-
-
-
 if __name__ == '__main__':
     # Required arguments
     extension = ".jpg,.jpeg,.png"
@@ -286,8 +246,43 @@ if __name__ == '__main__':
     cons_p.daemon = True  # ставим флаг, что данный процесс является демоническим
     cons_p.start()  # стартуем процесс
 
+    time.sleep(0.4)
     for pth in path:
-        convert_tree(pth)
+        extensions = extension.split(',')
+
+        for p in path:
+            if (pth+"/").startswith(p+"/"):
+                event = Ev()
+                dest = p + result_path
+
+                for child in Path(pth).glob('**/*'):
+                    # если это /webp то удалим отсутствующие копии
+                    if (str(child) + "/").startswith(dest + "/") and child.is_file():
+                        dest_item = str(child).replace(dest, p)
+                        if not Path(dest_item).is_file():
+                            print("Delete: ", child)
+                            Path(child).unlink()
+                            rm_empty_dir(Path(child).parent)
+                        continue
+
+                    if child.is_file() and all(not str(child).lower().endswith(ext) for ext in extensions):
+                        continue
+
+                    if child.is_file():  # Добавить в очередь если отсутствует или новее
+                        dest_item = str(child).replace(p, dest)
+
+                        if not Path(dest_item).is_file():
+                            event.mask = "IN_CLOSE_WRITE"
+                            event.pathname = str(child)
+                            queue_in.put(event)
+                        elif Path(dest_item).stat().st_mtime < Path(child).stat().st_mtime:
+                            event.mask = "IN_CLOSE_WRITE"
+                            event.pathname = str(child)
+                            queue_in.put(event)
+                        time.sleep(0.1)
+
+            break
+
 
     # Blocks monitoring
     monitor(path, extension, queue_in)
