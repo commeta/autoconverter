@@ -110,18 +110,19 @@ def converter(queue_in, path):
                 
 
                 if mask == "IN_MOVED_FROM": # Перемещение файла или каталога
-                    #print("IN_MOVED_FROM: ", item)
                     if event.wait == False:
                         if item in moved:  # Внутреннее - переименовываем
                             # Проверить перемещение из разных точек наблюдения
                             moved_dest_item = moved[item].replace(p, dest)
-                            print("Rename: ", dest_item)
+                            #print("Rename: ", dest_item)
+                            log(p, "Rename: " + dest_item)
                             Path(dest_item).rename(moved_dest_item)
                             del moved[item]
                             break
                             
                         else: # Внешнее - удаляем
-                            print("Delete: ", dest_item)
+                            #print("Delete: ", dest_item)
+                            log(p, "Delete: " + dest_item)
                             if Path(dest_item).is_file():
                                 Path(dest_item).unlink()
                                 rm_empty_dir(base_dest_item)
@@ -136,7 +137,8 @@ def converter(queue_in, path):
 
 
                 if mask == "IN_DELETE" and Path(dest_item).is_file():
-                    print("Delete: ", dest_item)
+                    #print("Delete: ", dest_item)
+                    log(p, "Delete: " + dest_item)
                     Path(dest_item).unlink()  # Удаляем файл
 
                     # Удаляем подкаталог если пустой
@@ -155,7 +157,6 @@ def converter(queue_in, path):
 
                 if mask == "IN_MOVED_TO":
                     src_pathname = getattr(event, 'src_pathname', False)
-                    #print("IN_MOVED_TO: ", item, " ", src_pathname)
 
                     if src_pathname != False: # Переименование, на следующей итерации, хотя лучше здесь
                         moved[src_pathname] = item
@@ -175,7 +176,8 @@ def converter(queue_in, path):
                     if not Path(item).is_file():
                         break
 
-                    print("Converting: ", dest_item)
+                    #print("Converting: ", dest_item)
+                    log(p, "Converting: " + dest_item)
 
                     if not Path(base_dest_item).is_dir():  # создаем подкаталог если нету
                         Path(base_dest_item).mkdir(
@@ -228,14 +230,14 @@ def rm_empty_dir(pth):
 
     if is_empty == True:
         if not str(pth).endswith(result_path):
-            print("Remove dir: ", pth)
+            #print("Remove dir: ", pth)
             Path(pth).rmdir()
 
 
 def convert_tree(pth):
     # Создание очереди при запуске, или событии с каталогами
-    global queue_in, extension, path
-    
+    global queue_in, extension
+
     extensions = extension.split(',')
     event = Ev()
     dest = pth + result_path
@@ -245,7 +247,9 @@ def convert_tree(pth):
         if(str(child) + "/").startswith(dest + "/") and child.is_file():
             dest_item = str(child).replace(dest, pth)
             if not Path(dest_item).is_file():
-                print("Delete: ", child)
+                #print("Delete: ", child)
+                log(pth, "Delete: " + child)
+
                 Path(child).unlink()
                 rm_empty_dir(Path(child).parent)
             continue
@@ -265,6 +269,12 @@ def convert_tree(pth):
                 event.pathname = str(child)
                 queue_in.put(event)
             time.sleep(0.1)
+
+
+def log(path, str): # # Логгер
+    global result_path
+    with open(path + result_path + "/images.log", "a") as file:
+        file.write(str + "\n")
 
 
 if __name__ == '__main__':
