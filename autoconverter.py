@@ -119,14 +119,12 @@ def converter(queue_in, path): # Обработчик очереди в отде
                         if item in moved:  # Внутреннее - переименовываем
                             # Проверить перемещение из разных точек наблюдения
                             moved_dest_item = moved[item].replace(p, dest)
-                            #print("Rename: ", dest_item)
                             log(p, "Rename: " + dest_item)
                             Path(dest_item).rename(moved_dest_item)
                             del moved[item]
                             break
                             
                         else: # Внешнее - удаляем
-                            #print("Delete: ", dest_item)
                             log(p, "Delete: " + dest_item)
                             if Path(dest_item).is_file():
                                 Path(dest_item).unlink()
@@ -142,7 +140,6 @@ def converter(queue_in, path): # Обработчик очереди в отде
 
 
                 if mask == "IN_DELETE" and Path(dest_item).is_file():
-                    #print("Delete: ", dest_item)
                     log(p, "Delete: " + dest_item)
                     Path(dest_item).unlink()  # Удаляем файл
 
@@ -182,7 +179,6 @@ def converter(queue_in, path): # Обработчик очереди в отде
                     if not Path(item).is_file():
                         break
 
-                    #print("Converting: ", dest_item)
                     log(p, "Converting: " + dest_item)
 
                     if not Path(base_dest_item).is_dir():  # создаем подкаталог если нету
@@ -205,8 +201,7 @@ def converter(queue_in, path): # Обработчик очереди в отде
         queue_in.task_done()
 
 
-def monitor(path, extension, queue_in):
-    # watched events
+def monitor(path, extension, queue_in): # watched events
     mask = pyinotify.IN_DELETE | pyinotify.IN_MOVED_TO | pyinotify.IN_MOVED_FROM | pyinotify.IN_CLOSE_WRITE
     wm = pyinotify.WatchManager()
     handler = OnWriteHandler(path=path, extension=extension, queue_in=queue_in)
@@ -216,8 +211,7 @@ def monitor(path, extension, queue_in):
     notifier.loop()
 
 
-def rm_tree(pth):
-    # удаление подкаталогов
+def rm_tree(pth): # удаление подкаталогов
     pth = Path(pth)
     for child in pth.glob('*'):
         if child.is_file():
@@ -236,15 +230,13 @@ def rm_empty_dir(pth):
 
     if is_empty == True:
         if not str(pth).endswith(result_path):
-            #print("Remove dir: ", pth)
             Path(pth).rmdir()
             return True
     
     return True
 
 
-def convert_tree(pth):
-    # Создание очереди при запуске, или событии с каталогами
+def convert_tree(pth): # Создание очереди при запуске, или событии с каталогами
     global queue_in, extension
 
     extensions = extension.split(',')
@@ -256,7 +248,6 @@ def convert_tree(pth):
         if(str(child) + "/").startswith(dest + "/") and child.is_file():
             dest_item = str(child).replace(dest, pth)
             if not Path(dest_item).is_file():
-                #print("Delete: ", child)
                 log(pth, "Delete: " + str(child))
 
                 Path(child).unlink()
