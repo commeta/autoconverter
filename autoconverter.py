@@ -162,7 +162,7 @@ def converter(queue_in, path):
                         break
                     else: # Перемещение
                         if Path(item).is_dir():  # Если каталог то запускаем сканер
-                            convert_tree(item)
+                            convert_tree(p)
                             break
                         else:  # Если файл то стартуем конвертер
                             mask = "IN_CLOSE_WRITE"
