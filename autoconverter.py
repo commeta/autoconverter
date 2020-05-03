@@ -34,7 +34,6 @@ class Ev(object):
     #maskname = ""
     #name = ""
     #path = ""
-    pathname = ""
     #src_pathname = ""
 
 
