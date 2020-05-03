@@ -31,12 +31,11 @@ class Ev(object):
     mask = ""
     pathname = ""
     dir = False
-    mask = ""
-    maskname = ""
-    name = ""
-    path = ""
+    #maskname = ""
+    #name = ""
+    #path = ""
     pathname = ""
-    src_pathname = ""
+    #src_pathname = ""
 
 
 class OnWriteHandler(pyinotify.ProcessEvent):
@@ -185,12 +184,11 @@ def converter(queue_in, path): # Обработчик очереди в отде
                     log(p, "Converting: " + dest_item)
 
                     if not Path(base_dest_item).is_dir():  # создаем подкаталог если нету
-                        Path(base_dest_item).mkdir(
-                            parents=True, exist_ok=True)
+                        Path(base_dest_item).mkdir(parents=True, exist_ok=True)
 
                     if extension == '.jpg' or extension == '.jpeg':
                         webp.cwebp(item, dest_item, "-quiet -pass 10 -m 6 -mt -q 80")
-                        
+
                     if extension == '.png':
                         webp.cwebp(
                             item, dest_item, "-quiet -pass 10 -m 6 -alpha_q 100 -mt -alpha_filter best -alpha_method 1 -q 80")
@@ -232,7 +230,6 @@ def rm_empty_dir(pth):
 
     if is_empty == True:
         if not str(pth).endswith(result_path):
-            print(pth)
             pth.rmdir()
             return True
     
@@ -254,12 +251,12 @@ def convert_tree(pth): # Создание очереди при запуске, 
                 if child.is_file():
                     log(pth, "Delete: " + str(child))
                     child.unlink()
-                    #rm_empty_dir()
 
                 elif child.is_dir():
                     log(pth, "Delete dir: " + str(child))
                     rm_tree(str(child))
-                    
+
+
             continue
 
         if child.is_file() and all(not str(child).lower().endswith(ext) for ext in extensions):
@@ -277,12 +274,6 @@ def convert_tree(pth): # Создание очереди при запуске, 
                 event.pathname = str(child)
                 queue_in.put(event)
             time.sleep(0.1)
-
-
-def log(path, str): # Логгер
-    global result_path
-    with open(path + result_path + "/images.log", "a") as file:
-        file.write(str + "\n")
 
         
 if __name__ == '__main__':
