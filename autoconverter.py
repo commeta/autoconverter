@@ -27,7 +27,6 @@ from pathlib import Path
 
 import sys
 import argparse
-#import psutil
 
 import os
 import signal
@@ -94,7 +93,7 @@ def converter(queue_in, path): # Обработчик очереди в отде
         item = event.pathname
         
         if mask == "SIG_TERM":
-            sys.exit(0)
+            break
 
 
         # Удалим из фильтра события старше 2-х секунд
@@ -321,8 +320,8 @@ if __name__ == '__main__': # Required arguments
     extension = ".jpg,.jpeg,.png"
 
     path = [
-        "/var/www/www-root/data/www/site.ru"",
-        "/var/www/www-root/data/www/site2.ru""
+        "/var/www/www-root/data/www/site.ru",
+        "/var/www/www-root/data/www/site2.ru"
     ]
 
     result_path = "/webp"  # Подкаталог для webp копий
@@ -384,8 +383,9 @@ if __name__ == '__main__': # Required arguments
 
     # Обработка сигналов завершения
     signal.signal(signal.SIGINT, sigterm_handler)
-    signal.signal(signal.SIGTERM, sigterm_handler)    
-    
+    signal.signal(signal.SIGTERM, sigterm_handler)
+
+
     # создаем подпроцесс для клиентской функции
     cons_p = multiprocessing.Process(target=converter, args=(queue_in, path))
     cons_p.daemon = True  # ставим флаг, что данный процесс является демоническим
@@ -394,8 +394,9 @@ if __name__ == '__main__': # Required arguments
 
     time.sleep(0.4)
     for pth in path:
-        sys.stdout.write("==> Start monitoring %s\n" % pth)
-        convert_tree(pth)
+        if Path(pth).is_dir():
+            sys.stdout.write("==> Start monitoring %s\n" % pth)
+            convert_tree(pth)
 
     # Blocks monitoring
     mask = pyinotify.IN_DELETE | pyinotify.IN_MOVED_TO | pyinotify.IN_MOVED_FROM | pyinotify.IN_CLOSE_WRITE
