@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 #
 # Usage:
-#   ./autoconverter.py
+#   autoconverter.py [-h] [-s STOP] [-b BACKGROUND]
 #
 # Blocks monitoring |path| and its subdirectories for modifications on
 # files ending with suffix |*.jpg,*.png|. Run |cwebp| each time a modification
@@ -25,6 +25,10 @@ import time
 from webptools import webplib as webp
 from pathlib import Path
 
+import sys
+import argparse
+import psutil
+
 
 class Ev(object):
     # Event struct
@@ -32,7 +36,6 @@ class Ev(object):
     pathname = ""
     dir = False
     wait = False
-
 
 
 class OnWriteHandler(pyinotify.ProcessEvent):
@@ -76,7 +79,6 @@ class OnWriteHandler(pyinotify.ProcessEvent):
 
 def converter(queue_in, path): # Обработчик очереди в отдельном процессе
     # Смена приоритета
-    libc = cdll.LoadLibrary("libc.so.6")
     pid = libc.getpid()
     libc.setpriority(0, pid, 20)
 
@@ -275,7 +277,7 @@ def convert_tree(pth): # Создание очереди при запуске, 
             elif Path(dest_item).stat().st_mtime < Path(child).stat().st_mtime:
                 log(pth, "Start convert_tree on Init: " +
                     str(child))
-                    
+
                 event.mask = "IN_CLOSE_WRITE"
                 event.pathname = str(child)
                 queue_in.put(event)
@@ -294,9 +296,23 @@ def log(path, str, mask=""):  # Логгер
         with open(path + result_path + "/images.log", "a") as file:
             file.write(str + "\n")
 
-        
-if __name__ == '__main__':
-    # Required arguments
+
+def createParser ():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('-s', '--stop', type=str, default=False)
+    parser.add_argument('-b', '--background', type=str, default=False)
+ 
+    return parser
+
+
+def killprocess(pid):
+    parent = psutil.Process(int(pid))
+    for child in parent.children(recursive=True):
+        child.kill()
+    parent.kill()
+
+
+if __name__ == '__main__': # Required arguments
     extension = ".jpg,.jpeg,.png"
 
     path = [
@@ -304,8 +320,53 @@ if __name__ == '__main__':
         "/var/www/www-root/data/www/site2.ru"
     ]
 
-    result_path = "/webp" # Подкаталог для webp копий
+    result_path = "/webp"  # Подкаталог для webp копий
     log_level = 3 # 2 - подробный, с выводом на экран. 1 - только инфо, в каталоге ~webp/images.log. 0 - Отключен
+
+    parser = createParser()
+    namespace = parser.parse_args(sys.argv[1:])
+
+    libc = cdll.LoadLibrary("libc.so.6")
+
+    if Path('/tmp/pyinotify.pid').is_file():  # Проверка запуска копии, вывод справки
+        with open('/tmp/pyinotify.pid', "r") as file:
+            nums = file.read().splitlines()
+        if 'stop' in namespace:
+            if namespace.stop:  # Выход из запущенного процесса, пока kill pid
+                pid = int(nums[0])
+                print('Kill another copy pid: ', pid)
+                killprocess(pid)
+                Path('/tmp/pyinotify.pid').unlink()
+                sys.exit(0)
+        
+        print('Runned another copy pid: ', nums[0])
+        sys.exit(0)        
+    else:
+        if 'stop' in namespace:
+            if namespace.stop:  # Выход из запущенного процесса
+                print('Not started another copy')
+                sys.exit(0)
+
+
+    pid = libc.getpid()
+    with open('/tmp/pyinotify.pid', "w") as file:
+        file.write(str(pid))
+    print('Start pid', pid)
+
+
+    if 'background' in namespace:
+        if namespace.background:
+            retVal = libc.fork()  # libc Fork
+            ppid = libc.getpid()
+
+            if ppid == pid:
+                sys.exit(0)
+            else:
+                print("Start in background %d:" % (ppid))
+                with open('/tmp/pyinotify.pid', "w") as file:
+                    file.write(str(ppid))
+                sys.stdout = open('/tmp/pyinotify.log', 'a')
+
 
     queue_in = multiprocessing.JoinableQueue()  # объект очереди
     # создаем подпроцесс для клиентской функции
