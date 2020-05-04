@@ -210,15 +210,6 @@ def converter(queue_in, path): # Обработчик очереди в отде
         queue_in.task_done()
 
 
-def monitor(path, extension, queue_in): # watched events
-    mask = pyinotify.IN_DELETE | pyinotify.IN_MOVED_TO | pyinotify.IN_MOVED_FROM | pyinotify.IN_CLOSE_WRITE
-    wm = pyinotify.WatchManager()
-    handler = OnWriteHandler(path=path, extension=extension, queue_in=queue_in)
-    notifier = pyinotify.Notifier(wm, default_proc_fun=handler)
-    wm.add_watch(path, mask, rec=True, auto_add=True)
-    notifier.loop()
-
-
 def rm_tree(pth): # удаление подкаталогов
     for child in Path(pth).glob('*'):
         if child.is_file():
@@ -311,14 +302,17 @@ def createParser (): # Разбор аргументов коммандной с
 
 
 def sigterm_handler(signum, frame):  # Завершение процессов
-    global queue_in
+    global queue_in, notifier
 
     event = Ev()
     event.mask = "SIG_TERM"
-    # Отправка сигнала в дочерний процесс, тут по идее cons_p.terminate, потестить!
-    queue_in.put(event)
-    time.sleep(1)
 
+    notifier.stop()
+    queue_in.empty()
+    queue_in.put(event)
+    time.sleep(2)
+
+    cons_p.terminate()
     sys.stdout.write("Shutting down...\n")
     sys.exit(0)
 
@@ -327,8 +321,8 @@ if __name__ == '__main__': # Required arguments
     extension = ".jpg,.jpeg,.png"
 
     path = [
-        "/var/www/www-root/data/www/site.ru",
-        "/var/www/www-root/data/www/site2.ru"
+        "/var/www/www-root/data/www/site.ru"",
+        "/var/www/www-root/data/www/site2.ru""
     ]
 
     result_path = "/webp"  # Подкаталог для webp копий
@@ -402,5 +396,9 @@ if __name__ == '__main__': # Required arguments
         convert_tree(pth)
 
     # Blocks monitoring
-    monitor(path, extension, queue_in)
-
+    mask = pyinotify.IN_DELETE | pyinotify.IN_MOVED_TO | pyinotify.IN_MOVED_FROM | pyinotify.IN_CLOSE_WRITE
+    wm = pyinotify.WatchManager()
+    handler = OnWriteHandler(path=path, extension=extension, queue_in=queue_in)
+    notifier = pyinotify.Notifier(wm, default_proc_fun=handler)
+    wm.add_watch(path, mask, rec=True, auto_add=True)
+    notifier.loop()
