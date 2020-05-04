@@ -315,8 +315,8 @@ if __name__ == '__main__': # Required arguments
     extension = ".jpg,.jpeg,.png"
 
     path = [
-        "/home/t/tutboxing/fanotify/tmp",
-        "/home/t/tutboxing/fanotify/tmp2"
+        "/var/www/www-root/data/www/site.ru",
+        "/var/www/www-root/data/www/site2.ru"
     ]
 
     result_path = "/webp"  # Подкаталог для webp копий
@@ -385,7 +385,7 @@ if __name__ == '__main__': # Required arguments
 
     time.sleep(0.4)
     for pth in path:
-        sys.stdout.write("==> Start monitoring %s (type c^c to exit)\n" % pth)
+        sys.stdout.write("==> Start monitoring %s\n" % pth)
         convert_tree(pth)
 
     # Blocks monitoring
