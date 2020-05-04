@@ -192,11 +192,10 @@ def converter(queue_in, path): # Обработчик очереди в отде
 
                     if extension == '.png':
                         webp.cwebp(
-                            item, dest_item, "-quiet -pass 10 -m 6 -alpha_q 100 -mt -alpha_filter best -alpha_method 1 -q 80")
+                            item, dest_item,
+                            "-quiet -pass 10 -m 6 -alpha_q 100 -mt -alpha_filter best -alpha_method 1 -q 80")
                     
                     break
-
-
                 break
 
         # Сообщаем, что элемент очереди queue_in обработан с помощью метода task_done
@@ -249,12 +248,12 @@ def convert_tree(pth): # Создание очереди при запуске, 
             dest_item = str(child).replace(dest, pth)
             if not Path(dest_item).exists():
                 if child.is_file():
-                    log(pth, "Delete: " + str(child),
+                    log(pth, "Start convert_tree on Init: " + str(child),
                         mask="CONVERT_THREE Delete")
                     child.unlink()
 
                 elif child.is_dir():
-                    log(pth, "Delete dir: " + str(child),
+                    log(pth, "Start convert_tree on Init: " + str(child),
                         mask="CONVERT_THREE Delete dir")
                     rm_tree(str(child))
             continue
@@ -266,11 +265,17 @@ def convert_tree(pth): # Создание очереди при запуске, 
             dest_item = str(child).replace(pth, dest)
 
             if not Path(dest_item).is_file():
+                log(pth, "Start convert_tree on Init: " +
+                    str(child))
+
                 event.mask = "IN_CLOSE_WRITE"
                 event.pathname = str(child)
                 queue_in.put(event)
                 time.sleep(0.1)
             elif Path(dest_item).stat().st_mtime < Path(child).stat().st_mtime:
+                log(pth, "Start convert_tree on Init: " +
+                    str(child))
+                    
                 event.mask = "IN_CLOSE_WRITE"
                 event.pathname = str(child)
                 queue_in.put(event)
@@ -280,9 +285,12 @@ def convert_tree(pth): # Создание очереди при запуске, 
 def log(path, str, mask=""):  # Логгер
     global result_path, log_level
 
+    if not Path(path + result_path).is_dir():
+        Path(path + result_path).mkdir(parents=True, exist_ok=True)
+
     if log_level > 0:
         if log_level > 1:
-            print(mask, " ", path, "/ ", str)
+            print(mask, path, str)
         with open(path + result_path + "/images.log", "a") as file:
             file.write(str + "\n")
 
