@@ -31,10 +31,8 @@ class Ev(object):
     mask = ""
     pathname = ""
     dir = False
-    #maskname = ""
-    #name = ""
-    #path = ""
-    #src_pathname = ""
+    wait = False
+
 
 
 class OnWriteHandler(pyinotify.ProcessEvent):
@@ -120,13 +118,15 @@ def converter(queue_in, path): # Обработчик очереди в отде
                         if item in moved:  # Внутреннее - переименовываем
                             # Проверить перемещение из разных точек наблюдения
                             moved_dest_item = moved[item].replace(p, dest)
-                            log(p, "Rename: " + dest_item)
+                            log(p, "Rename: " + dest_item,
+                                mask="IN_MOVED_FROM Rename")
                             Path(dest_item).rename(moved_dest_item)
                             del moved[item]
                             break
                             
                         else: # Внешнее - удаляем
-                            log(p, "Delete: " + dest_item)
+                            log(p, "Delete: " + dest_item,
+                                mask="IN_MOVED_FROM Delete")
                             if Path(dest_item).is_file():
                                 Path(dest_item).unlink()
                                 rm_empty_dir(base_dest_item)
@@ -141,12 +141,13 @@ def converter(queue_in, path): # Обработчик очереди в отде
 
 
                 if mask == "IN_DELETE" and Path(dest_item).is_file():
-                    log(p, "Delete: " + dest_item)
+                    log(p, "Delete: " + dest_item, mask="IN_DELETE Delete")
                     Path(dest_item).unlink()  # Удаляем файл
 
                     # Удаляем подкаталог если пустой
                     if rm_empty_dir(base_dest_item):
-                        log(p, "Delete dir: " + str(base_dest_item))
+                        log(p, "Delete dir: " +
+                            str(base_dest_item), mask="IN_DELETE Delete dir")
 
 
                 # Если дубль события то выходим
@@ -180,7 +181,8 @@ def converter(queue_in, path): # Обработчик очереди в отде
                     if not Path(item).is_file():
                         break
 
-                    log(p, "Converting: " + dest_item)
+                    log(p, "Converting: " + dest_item,
+                        mask="IN_CLOSE_WRITE Converting")
 
                     if not Path(base_dest_item).is_dir():  # создаем подкаталог если нету
                         Path(base_dest_item).mkdir(parents=True, exist_ok=True)
@@ -247,11 +249,13 @@ def convert_tree(pth): # Создание очереди при запуске, 
             dest_item = str(child).replace(dest, pth)
             if not Path(dest_item).exists():
                 if child.is_file():
-                    log(pth, "Delete: " + str(child))
+                    log(pth, "Delete: " + str(child),
+                        mask="CONVERT_THREE Delete")
                     child.unlink()
 
                 elif child.is_dir():
-                    log(pth, "Delete dir: " + str(child))
+                    log(pth, "Delete dir: " + str(child),
+                        mask="CONVERT_THREE Delete dir")
                     rm_tree(str(child))
             continue
 
@@ -273,13 +277,14 @@ def convert_tree(pth): # Создание очереди при запуске, 
                 time.sleep(0.1)
 
 
-def log(path, str): # Логгер
+def log(path, str, mask=""):  # Логгер
     global result_path, log_level
 
-    if log_level:
-        print(path, "/ ", str)
-    with open(path + result_path + "/images.log", "a") as file:
-        file.write(str + "\n")
+    if log_level > 0:
+        if log_level > 1:
+            print(mask, " ", path, "/ ", str)
+        with open(path + result_path + "/images.log", "a") as file:
+            file.write(str + "\n")
 
         
 if __name__ == '__main__':
@@ -292,7 +297,7 @@ if __name__ == '__main__':
     ]
 
     result_path = "/webp" # Подкаталог для webp копий
-    log_level = True # True - подробный, с выводом на экран. False - только инфо, в каталоге ~webp/images.log
+    log_level = 3 # 2 - подробный, с выводом на экран. 1 - только инфо, в каталоге ~webp/images.log. 0 - Отключен
 
     queue_in = multiprocessing.JoinableQueue()  # объект очереди
     # создаем подпроцесс для клиентской функции
