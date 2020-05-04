@@ -301,7 +301,7 @@ def createParser (): # Разбор аргументов коммандной с
 
 
 def sigterm_handler(signum, frame):  # Завершение процессов
-    global queue_in, notifier
+    global queue_in, notifier, pidFile
 
     event = Ev()
     event.mask = "SIG_TERM"
@@ -313,6 +313,10 @@ def sigterm_handler(signum, frame):  # Завершение процессов
 
     cons_p.terminate()
     sys.stdout.write("Shutting down...\n")
+    
+    if Path(pidFile).is_file():
+        Path(pidFile).unlink()
+    
     sys.exit(0)
 
 
@@ -381,10 +385,6 @@ if __name__ == '__main__': # Required arguments
 
     queue_in = multiprocessing.JoinableQueue()  # объект очереди
 
-    # Обработка сигналов завершения
-    signal.signal(signal.SIGINT, sigterm_handler)
-    signal.signal(signal.SIGTERM, sigterm_handler)
-
 
     # создаем подпроцесс для клиентской функции
     cons_p = multiprocessing.Process(target=converter, args=(queue_in, path))
@@ -398,10 +398,16 @@ if __name__ == '__main__': # Required arguments
             sys.stdout.write("==> Start monitoring %s\n" % pth)
             convert_tree(pth)
 
+
     # Blocks monitoring
     mask = pyinotify.IN_DELETE | pyinotify.IN_MOVED_TO | pyinotify.IN_MOVED_FROM | pyinotify.IN_CLOSE_WRITE
     wm = pyinotify.WatchManager()
     handler = OnWriteHandler(path=path, extension=extension, queue_in=queue_in)
     notifier = pyinotify.Notifier(wm, default_proc_fun=handler)
+
+    # Обработка сигналов завершения
+    signal.signal(signal.SIGINT, sigterm_handler)
+    signal.signal(signal.SIGTERM, sigterm_handler)
+
     wm.add_watch(path, mask, rec=True, auto_add=True)
     notifier.loop()
