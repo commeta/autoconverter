@@ -381,14 +381,16 @@ if __name__ == '__main__': # Required arguments
 
 
     queue_in = multiprocessing.JoinableQueue()  # объект очереди
+
+    # Обработка сигналов завершения
+    signal.signal(signal.SIGINT, sigterm_handler)
+    signal.signal(signal.SIGTERM, sigterm_handler)    
+    
     # создаем подпроцесс для клиентской функции
     cons_p = multiprocessing.Process(target=converter, args=(queue_in, path))
     cons_p.daemon = True  # ставим флаг, что данный процесс является демоническим
     cons_p.start()  # стартуем процесс
 
-    # Обработка сигналов завершения
-    signal.signal(signal.SIGINT, sigterm_handler)
-    signal.signal(signal.SIGTERM, sigterm_handler)
 
     time.sleep(0.4)
     for pth in path:
