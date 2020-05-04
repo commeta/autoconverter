@@ -333,7 +333,6 @@ if __name__ == '__main__': # Required arguments
     
     pidFile = '/tmp/pyinotify.pid'
 
-
     parser = createParser()
     namespace = parser.parse_args(sys.argv[1:])
 
@@ -350,8 +349,9 @@ if __name__ == '__main__': # Required arguments
                 if Path("/proc/" + nums[0]).exists():
                     os.kill(pid, signal.SIGTERM)
                 
-                Path(pidFile).unlink()
-                sys.exit(0)
+                if Path(pidFile).is_file():
+                    Path(pidFile).unlink()
+                    sys.exit(0)
 
         sys.stdout.write("Runned another copy pid: %d\n" % int(nums[0]))
         sys.exit(0)
