@@ -27,8 +27,10 @@ from pathlib import Path
 
 import sys
 import argparse
-import psutil
+#import psutil
 
+import os
+import signal
 
 class Ev(object):
     # Event struct
@@ -91,6 +93,10 @@ def converter(queue_in, path): # Обработчик очереди в отде
         is_dir = event.dir
         item = event.pathname
         
+        if mask == "SIG_TERM":
+            sys.exit(0)
+
+
         # Удалим из фильтра события старше 2-х секунд
         for key, value in list(filter.items()):
             if value['time'] + 2 < time.time():
@@ -304,11 +310,20 @@ def createParser (): # Разбор аргументов коммандной с
     return parser
 
 
-def killprocess(pid): # Убить процесс и потомков
-    parent = psutil.Process(int(pid))
-    for child in parent.children(recursive=True):
-        child.kill()
-    parent.kill()
+def killprocess(pid):  # Убить процесс
+    os.kill(pid, signal.SIGTERM)
+
+
+def sigterm_handler(signum, frame):  # Завершение процессов
+    global queue_in
+
+    event = Ev()
+    event.mask = "SIG_TERM"
+    queue_in.put(event)
+    time.sleep(0.1)
+
+    sys.stdout.write("Shutting down...\n")
+    sys.exit(0)
 
 
 if __name__ == '__main__': # Required arguments
@@ -324,6 +339,7 @@ if __name__ == '__main__': # Required arguments
     
     pidFile = '/tmp/pyinotify.pid'
 
+
     parser = createParser()
     namespace = parser.parse_args(sys.argv[1:])
 
@@ -333,9 +349,9 @@ if __name__ == '__main__': # Required arguments
         with open(pidFile, "r") as file:
             nums = file.read().splitlines()
         if 'stop' in namespace:
-            if namespace.stop:  # Выход из запущенного процесса, пока kill pid
+            if namespace.stop:  # Выход из запущенного процесса
                 pid = int(nums[0])
-                sys.stdout.write("Kill another copy pid: %d\n" % pid)
+                sys.stdout.write("Terminate another copy pid: %d\n" % pid)
 
                 if Path("/proc/" + nums[0]).exists():
                     killprocess(pid)
@@ -361,16 +377,12 @@ if __name__ == '__main__': # Required arguments
 
     if 'background' in namespace: # Запуск в фоновом режиме
         if namespace.background:
-            retVal = libc.fork()  # libc Fork
-            ppid = libc.getpid()
+            ppid = os.fork()
 
-            if retVal == -1 or ppid == -1:
-                sys.stdout.write("Error start in background mode!\n")
-                sys.exit(0)
-
-            if ppid == pid:
+            if ppid > 0:
                 sys.exit(0)
             else:
+                ppid = libc.getpid()
                 sys.stdout.write("Start in background %d:\n" % (ppid))
                 with open(pidFile, "w") as file:
                     file.write(str(ppid))
@@ -382,6 +394,9 @@ if __name__ == '__main__': # Required arguments
     cons_p = multiprocessing.Process(target=converter, args=(queue_in, path))
     cons_p.daemon = True  # ставим флаг, что данный процесс является демоническим
     cons_p.start()  # стартуем процесс
+
+    signal.signal(signal.SIGINT, sigterm_handler)
+    signal.signal(signal.SIGTERM, sigterm_handler)
 
     time.sleep(0.4)
     for pth in path:
