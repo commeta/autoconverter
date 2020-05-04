@@ -310,17 +310,14 @@ def createParser (): # Разбор аргументов коммандной с
     return parser
 
 
-def killprocess(pid):  # Убить процесс
-    os.kill(pid, signal.SIGTERM)
-
-
 def sigterm_handler(signum, frame):  # Завершение процессов
     global queue_in
 
     event = Ev()
     event.mask = "SIG_TERM"
+    # Отправка сигнала в дочерний процесс, тут по идее cons_p.terminate, потестить!
     queue_in.put(event)
-    time.sleep(0.1)
+    time.sleep(1)
 
     sys.stdout.write("Shutting down...\n")
     sys.exit(0)
@@ -354,7 +351,7 @@ if __name__ == '__main__': # Required arguments
                 sys.stdout.write("Terminate another copy pid: %d\n" % pid)
 
                 if Path("/proc/" + nums[0]).exists():
-                    killprocess(pid)
+                    os.kill(pid, signal.SIGTERM)
                 
                 Path(pidFile).unlink()
                 sys.exit(0)
@@ -383,7 +380,7 @@ if __name__ == '__main__': # Required arguments
                 sys.exit(0)
             else:
                 ppid = libc.getpid()
-                sys.stdout.write("Start in background %d:\n" % (ppid))
+                sys.stdout.write("Start in background %d\n" % (ppid))
                 with open(pidFile, "w") as file:
                     file.write(str(ppid))
                 sys.stdout = open('/dev/null', 'w')
@@ -395,6 +392,7 @@ if __name__ == '__main__': # Required arguments
     cons_p.daemon = True  # ставим флаг, что данный процесс является демоническим
     cons_p.start()  # стартуем процесс
 
+    # Обработка сигналов завершения
     signal.signal(signal.SIGINT, sigterm_handler)
     signal.signal(signal.SIGTERM, sigterm_handler)
 
@@ -405,3 +403,4 @@ if __name__ == '__main__': # Required arguments
 
     # Blocks monitoring
     monitor(path, extension, queue_in)
+
