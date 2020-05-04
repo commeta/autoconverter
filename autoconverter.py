@@ -210,7 +210,6 @@ def monitor(path, extension, queue_in): # watched events
     handler = OnWriteHandler(path=path, extension=extension, queue_in=queue_in)
     notifier = pyinotify.Notifier(wm, default_proc_fun=handler)
     wm.add_watch(path, mask, rec=True, auto_add=True)
-    sys.stdout.write('==> Start monitoring %s (type c^c to exit)' % path)
     notifier.loop()
 
 
@@ -292,7 +291,7 @@ def log(path, str, mask=""):  # Логгер
 
     if log_level > 0:
         if log_level > 1:
-            sys.stdout.write('%s\n' % (mask + path + str))
+            sys.stdout.write('%s\n' % (mask + " " + path + " " + str))
         with open(path + result_path + "/images.log", "a") as file:
             file.write(str + "\n")
 
@@ -321,15 +320,17 @@ if __name__ == '__main__': # Required arguments
     ]
 
     result_path = "/webp"  # Подкаталог для webp копий
-    log_level = 3 # 2 - подробный, с выводом на экран. 1 - только инфо, в каталоге ~webp/images.log. 0 - Отключен
+    log_level = 3  # 2 - подробный, с выводом на экран. 1 - только инфо, в каталоге ~webp/images.log. 0 - Отключен
+    
+    pidFile = '/tmp/pyinotify.pid'
 
     parser = createParser()
     namespace = parser.parse_args(sys.argv[1:])
 
     libc = cdll.LoadLibrary("libc.so.6")
 
-    if Path('/tmp/pyinotify.pid').is_file():  # Проверка запуска копии, вывод справки
-        with open('/tmp/pyinotify.pid', "r") as file:
+    if Path(pidFile).is_file():  # Проверка запуска копии, вывод справки
+        with open(pidFile, "r") as file:
             nums = file.read().splitlines()
         if 'stop' in namespace:
             if namespace.stop:  # Выход из запущенного процесса, пока kill pid
@@ -337,7 +338,7 @@ if __name__ == '__main__': # Required arguments
                 sys.stdout.write("Kill another copy pid: %d\n" % pid)
 
                 killprocess(pid)
-                Path('/tmp/pyinotify.pid').unlink()
+                Path(pidFile).unlink()
                 sys.exit(0)
         
         sys.stdout.write("Runned another copy pid: %d\n" % int(nums[0]) )
@@ -350,9 +351,9 @@ if __name__ == '__main__': # Required arguments
 
 
     pid = libc.getpid()
-    with open('/tmp/pyinotify.pid', "w") as file:
+    with open(pidFile, "w") as file:
         file.write(str(pid))
-    sys.stdout.write("Start pid %d\n" % pid)
+    sys.stdout.write("Start monitoring pid %d (type c^c to exit)\n" % pid)
 
 
     if 'background' in namespace: # Запуск в фоновом режиме
@@ -364,7 +365,7 @@ if __name__ == '__main__': # Required arguments
                 sys.exit(0)
             else:
                 sys.stdout.write("Start in background %d:\n" % (ppid))
-                with open('/tmp/pyinotify.pid', "w") as file:
+                with open(pidFile, "w") as file:
                     file.write(str(ppid))
                 sys.stdout = open('/dev/null', 'w')
 
@@ -378,7 +379,6 @@ if __name__ == '__main__': # Required arguments
     time.sleep(0.4)
     for pth in path:
         convert_tree(pth)
-
 
     # Blocks monitoring
     monitor(path, extension, queue_in)
