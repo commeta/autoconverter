@@ -210,7 +210,7 @@ def monitor(path, extension, queue_in): # watched events
     handler = OnWriteHandler(path=path, extension=extension, queue_in=queue_in)
     notifier = pyinotify.Notifier(wm, default_proc_fun=handler)
     wm.add_watch(path, mask, rec=True, auto_add=True)
-    print ('==> Start monitoring %s (type c^c to exit)' % path)
+    sys.stdout.write('==> Start monitoring %s (type c^c to exit)' % path)
     notifier.loop()
 
 
@@ -292,12 +292,12 @@ def log(path, str, mask=""):  # Логгер
 
     if log_level > 0:
         if log_level > 1:
-            print(mask, path, str)
+            sys.stdout.write('%s\n' % (mask + path + str))
         with open(path + result_path + "/images.log", "a") as file:
             file.write(str + "\n")
 
 
-def createParser ():
+def createParser (): # Разбор аргументов коммандной строки
     parser = argparse.ArgumentParser()
     parser.add_argument('-s', '--stop', type=str, default=False)
     parser.add_argument('-b', '--background', type=str, default=False)
@@ -305,7 +305,7 @@ def createParser ():
     return parser
 
 
-def killprocess(pid):
+def killprocess(pid): # Убить процесс и потомков
     parent = psutil.Process(int(pid))
     for child in parent.children(recursive=True):
         child.kill()
@@ -334,38 +334,39 @@ if __name__ == '__main__': # Required arguments
         if 'stop' in namespace:
             if namespace.stop:  # Выход из запущенного процесса, пока kill pid
                 pid = int(nums[0])
-                print('Kill another copy pid: ', pid)
+                sys.stdout.write("Kill another copy pid: %d\n" % pid)
+
                 killprocess(pid)
                 Path('/tmp/pyinotify.pid').unlink()
                 sys.exit(0)
         
-        print('Runned another copy pid: ', nums[0])
+        sys.stdout.write("Runned another copy pid: %d\n" % int(nums[0]) )
         sys.exit(0)        
     else:
         if 'stop' in namespace:
             if namespace.stop:  # Выход из запущенного процесса
-                print('Not started another copy')
+                sys.stdout.write('Not started another copy\n')
                 sys.exit(0)
 
 
     pid = libc.getpid()
     with open('/tmp/pyinotify.pid', "w") as file:
         file.write(str(pid))
-    print('Start pid', pid)
+    sys.stdout.write("Start pid %d\n" % pid)
 
 
-    if 'background' in namespace:
+    if 'background' in namespace: # Запуск в фоновом режиме
         if namespace.background:
             retVal = libc.fork()  # libc Fork
             ppid = libc.getpid()
 
-            if ppid == pid:
+            if ppid == pid or ppid == -1:
                 sys.exit(0)
             else:
-                print("Start in background %d:" % (ppid))
+                sys.stdout.write("Start in background %d:\n" % (ppid))
                 with open('/tmp/pyinotify.pid', "w") as file:
                     file.write(str(ppid))
-                sys.stdout = open('/tmp/pyinotify.log', 'a')
+                sys.stdout = open('/dev/null', 'w')
 
 
     queue_in = multiprocessing.JoinableQueue()  # объект очереди
