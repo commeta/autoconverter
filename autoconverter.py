@@ -231,7 +231,6 @@ def rm_empty_dir(pth):
         if not str(pth).endswith(result_path):
             pth.rmdir()
             return True
-    
     return True
 
 
@@ -254,8 +253,6 @@ def convert_tree(pth): # Создание очереди при запуске, 
                 elif child.is_dir():
                     log(pth, "Delete dir: " + str(child))
                     rm_tree(str(child))
-
-
             continue
 
         if child.is_file() and all(not str(child).lower().endswith(ext) for ext in extensions):
@@ -268,11 +265,21 @@ def convert_tree(pth): # Создание очереди при запуске, 
                 event.mask = "IN_CLOSE_WRITE"
                 event.pathname = str(child)
                 queue_in.put(event)
+                time.sleep(0.1)
             elif Path(dest_item).stat().st_mtime < Path(child).stat().st_mtime:
                 event.mask = "IN_CLOSE_WRITE"
                 event.pathname = str(child)
                 queue_in.put(event)
-            time.sleep(0.1)
+                time.sleep(0.1)
+
+
+def log(path, str): # Логгер
+    global result_path, log_level
+
+    if log_level:
+        print(path, "/ ", str)
+    with open(path + result_path + "/images.log", "a") as file:
+        file.write(str + "\n")
 
         
 if __name__ == '__main__':
@@ -285,6 +292,7 @@ if __name__ == '__main__':
     ]
 
     result_path = "/webp" # Подкаталог для webp копий
+    log_level = True # True - подробный, с выводом на экран. False - только инфо, в каталоге ~webp/images.log
 
     queue_in = multiprocessing.JoinableQueue()  # объект очереди
     # создаем подпроцесс для клиентской функции
