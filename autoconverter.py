@@ -315,12 +315,12 @@ if __name__ == '__main__': # Required arguments
     extension = ".jpg,.jpeg,.png"
 
     path = [
-        "/var/www/www-root/data/www/site.ru",
-        "/var/www/www-root/data/www/site2.ru"
+        "/home/t/tutboxing/fanotify/tmp",
+        "/home/t/tutboxing/fanotify/tmp2"
     ]
 
     result_path = "/webp"  # Подкаталог для webp копий
-    log_level = 3  # 2 - подробный, с выводом на экран. 1 - только инфо, в каталоге ~webp/images.log. 0 - Отключен
+    log_level = 3 # 2 - подробный, с выводом на экран. 1 - только инфо, в каталоге ~webp/images.log. 0 - Отключен
     
     pidFile = '/tmp/pyinotify.pid'
 
@@ -337,12 +337,15 @@ if __name__ == '__main__': # Required arguments
                 pid = int(nums[0])
                 sys.stdout.write("Kill another copy pid: %d\n" % pid)
 
-                killprocess(pid)
+                if Path("/proc/" + nums[0]).exists():
+                    killprocess(pid)
+                
                 Path(pidFile).unlink()
                 sys.exit(0)
-        
-        sys.stdout.write("Runned another copy pid: %d\n" % int(nums[0]) )
-        sys.exit(0)        
+
+        sys.stdout.write("Runned another copy pid: %d\n" % int(nums[0]))
+        sys.exit(0)
+
     else:
         if 'stop' in namespace:
             if namespace.stop:  # Выход из запущенного процесса
@@ -361,7 +364,11 @@ if __name__ == '__main__': # Required arguments
             retVal = libc.fork()  # libc Fork
             ppid = libc.getpid()
 
-            if ppid == pid or ppid == -1:
+            if retVal == -1 or ppid == -1:
+                sys.stdout.write("Error start in background mode!\n")
+                sys.exit(0)
+
+            if ppid == pid:
                 sys.exit(0)
             else:
                 sys.stdout.write("Start in background %d:\n" % (ppid))
@@ -378,10 +385,8 @@ if __name__ == '__main__': # Required arguments
 
     time.sleep(0.4)
     for pth in path:
+        sys.stdout.write("==> Start monitoring %s (type c^c to exit)\n" % pth)
         convert_tree(pth)
 
     # Blocks monitoring
     monitor(path, extension, queue_in)
-
-    #queue_in.terminate()
-    #queue_in.join()  # ждем пока чтобы клиент успел обработать все элементы
