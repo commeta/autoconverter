@@ -301,7 +301,7 @@ def createParser (): # Разбор аргументов коммандной с
 
 
 def sigterm_handler(signum, frame):  # Завершение процессов
-    global queue_in, notifier, pidFile
+    global queue_in, notifier, pidFile, cons_p
 
     event = Ev()
     event.mask = "SIG_TERM"
