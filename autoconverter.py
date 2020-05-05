@@ -307,13 +307,16 @@ def sigterm_handler(signum, frame):  # Завершение процессов
 
     event = Ev()
     event.mask = "SIG_TERM"
+    queue_in.put(event)
+    sys.stdout.write("Waiting tasks to complete...\n")
 
     while queue_in.qsize() > 0:
+        sys.stdout.write("%s " % queue_in.qsize() )
         queue_in.get(False)
         queue_in.task_done()
 
     queue_in.put(event)
-    time.sleep(1)
+    time.sleep(2)
     queue_in.close()
 
     cons_p.terminate()
@@ -390,19 +393,10 @@ if __name__ == '__main__': # Required arguments
 
     queue_in = multiprocessing.JoinableQueue()  # объект очереди
 
-
     # создаем подпроцесс для клиентской функции
     cons_p = multiprocessing.Process(target=converter, args=(queue_in, path))
     cons_p.daemon = True  # ставим флаг, что данный процесс является демоническим
     cons_p.start()  # стартуем процесс
-
-
-    time.sleep(0.4)
-    for pth in path:
-        if Path(pth).is_dir():
-            sys.stdout.write("==> Start monitoring %s\n" % pth)
-            convert_tree(pth)
-
 
     # Blocks monitoring
     mask = pyinotify.IN_DELETE | pyinotify.IN_MOVED_TO | pyinotify.IN_MOVED_FROM | pyinotify.IN_CLOSE_WRITE
@@ -413,6 +407,13 @@ if __name__ == '__main__': # Required arguments
     # Обработка сигналов завершения
     signal.signal(signal.SIGINT, sigterm_handler)
     signal.signal(signal.SIGTERM, sigterm_handler)
+
+    time.sleep(0.4)
+    for pth in path:
+        if Path(pth).is_dir():
+            sys.stdout.write("==> Start monitoring %s\n" % pth)
+            convert_tree(pth)
+
 
     wm.add_watch(path, mask, rec=True, auto_add=True)
     notifier.loop()
