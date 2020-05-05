@@ -303,13 +303,18 @@ def createParser (): # Разбор аргументов коммандной с
 def sigterm_handler(signum, frame):  # Завершение процессов
     global queue_in, notifier, pidFile, cons_p
 
+    notifier.stop()
+
     event = Ev()
     event.mask = "SIG_TERM"
 
-    notifier.stop()
-    queue_in.empty()
+    while queue_in.qsize() > 0:
+        queue_in.get(False)
+        queue_in.task_done()
+
     queue_in.put(event)
-    time.sleep(2)
+    time.sleep(1)
+    queue_in.close()
 
     cons_p.terminate()
     sys.stdout.write("Shutting down...\n")
