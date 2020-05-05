@@ -111,9 +111,13 @@ def converter(queue_in, path): # Обработчик очереди в отде
                 base_dest_item = Path(dest_item).parent
                 base_item = Path(item).parent
 
+                uid = os.stat(p).st_uid
+                gid = os.stat(p).st_gid
+
 
                 if not Path(dest).is_dir():  # создает каталог если нету /webp
                     Path(dest).mkdir(parents=True, exist_ok=True)
+                    os.chown(dest, uid, gid)
 
 
                 if item.startswith(dest):  # если это /webp то выход
@@ -191,16 +195,20 @@ def converter(queue_in, path): # Обработчик очереди в отде
                     log(p, "Converting: " + dest_item,
                         mask="IN_CLOSE_WRITE Converting")
 
+                  
                     if not Path(base_dest_item).is_dir():  # создаем подкаталог если нету
                         Path(base_dest_item).mkdir(parents=True, exist_ok=True)
+                        os.chown(base_dest_item, uid, gid)
 
                     if extension == '.jpg' or extension == '.jpeg':
                         webp.cwebp(item, dest_item, "-quiet -pass 10 -m 6 -mt -q 80")
+                        os.chown(dest_item, uid, gid)
 
                     if extension == '.png':
                         webp.cwebp(
                             item, dest_item,
                             "-quiet -pass 10 -m 6 -alpha_q 100 -mt -alpha_filter best -alpha_method 1 -q 80")
+                        os.chown(dest_item, uid, gid)
                     
                     break
                 break
@@ -238,6 +246,9 @@ def convert_tree(pth): # Создание очереди при запуске, 
     extensions = extension.split(',')
     event = Ev()
     dest = pth + result_path
+
+    #uid = os.stat(pth).st_uid
+    #gid = os.stat(pth).st_gid
 
     for child in Path(pth).glob('**/*'):
         # если это /webp то удалим отсутствующие копии
@@ -282,14 +293,19 @@ def convert_tree(pth): # Создание очереди при запуске, 
 def log(path, str, mask=""):  # Логгер
     global result_path, log_level
 
+    uid = os.stat(path).st_uid
+    gid = os.stat(path).st_gid
+
     if not Path(path + result_path).is_dir():
         Path(path + result_path).mkdir(parents=True, exist_ok=True)
+        os.chown(path + result_path, uid, gid)
 
     if log_level > 0:
         if log_level > 1:
             sys.stdout.write('%s\n' % (mask + " " + path + " " + str))
         with open(path + result_path + "/images.log", "a") as file:
             file.write(str + "\n")
+        os.chown(path + result_path + "/images.log", uid, gid)
 
 
 def createParser (): # Разбор аргументов коммандной строки
