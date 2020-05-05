@@ -217,27 +217,20 @@ def converter(queue_in, path): # Обработчик очереди в отде
         queue_in.task_done()
 
 
-def rm_tree(pth): # удаление подкаталогов
-    for child in Path(pth).glob('*'):
-        if child.is_file():
-            child.unlink()
-        else:
-            rm_tree(child)
-    Path(pth).rmdir()
+def rm_tree(pth):  # удаление подкаталогов
+    [f.unlink() for f in Path(pth).glob("*") if f.exists()]
 
 
 def rm_empty_dir(pth):
     is_empty = True  # Удаляем подкаталог если пустой
     for child in pth.glob("*"):
         if child.is_file() or child.is_dir():
-            is_empty = False
             return False
 
     if is_empty == True:
         if not str(pth).endswith(result_path):
             pth.rmdir()
             return True
-    return True
 
 
 def convert_tree(pth): # Создание очереди при запуске, или событии с каталогами
@@ -246,9 +239,6 @@ def convert_tree(pth): # Создание очереди при запуске, 
     extensions = extension.split(',')
     event = Ev()
     dest = pth + result_path
-
-    #uid = os.stat(pth).st_uid
-    #gid = os.stat(pth).st_gid
 
     for child in Path(pth).glob('**/*'):
         # если это /webp то удалим отсутствующие копии
@@ -323,13 +313,15 @@ def sigterm_handler(signum, frame):  # Завершение процессов
 
     event = Ev()
     event.mask = "SIG_TERM"
-    queue_in.put(event)
     sys.stdout.write("Waiting tasks to complete...\n")
 
-    while queue_in.qsize() > 0:
-        sys.stdout.write("%s " % queue_in.qsize() )
-        queue_in.get(False)
-        queue_in.task_done()
+    if queue_in.qsize() > 0:
+        sys.stdout.write("Aborting %s tasks\n" % queue_in.qsize())
+
+        while queue_in.qsize() > 0:
+            sys.stdout.write("%s " % queue_in.qsize() )
+            queue_in.get(False)
+            queue_in.task_done()
 
     queue_in.put(event)
     time.sleep(2)
