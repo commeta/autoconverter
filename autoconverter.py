@@ -31,6 +31,8 @@ import argparse
 import os
 import signal
 
+import shutil
+
 class Ev(object):
     # Event struct
     mask = ""
@@ -218,19 +220,17 @@ def converter(queue_in, path): # Обработчик очереди в отде
 
 
 def rm_tree(pth):  # удаление подкаталогов
-    [f.unlink() for f in Path(pth).glob("*") if f.exists()]
+    shutil.rmtree(pth)
 
 
-def rm_empty_dir(pth):
-    is_empty = True  # Удаляем подкаталог если пустой
+def rm_empty_dir(pth): # Удаляем подкаталог если пустой
     for child in pth.glob("*"):
         if child.is_file() or child.is_dir():
             return False
 
-    if is_empty == True:
-        if not str(pth).endswith(result_path):
-            pth.rmdir()
-            return True
+    if not str(pth).endswith(result_path):
+        pth.rmdir()
+        return True
 
 
 def convert_tree(pth): # Создание очереди при запуске, или событии с каталогами
