@@ -14,27 +14,26 @@
 # http://seb.dbzteam.org/pyinotify/
 # https://github.com/seb-m/pyinotify
 # https://github.com/scionoftech/webptools
+# https://docs.python.org/2/library/multiprocessing.html
 #
 # yum install python-inotify.noarch python-inotify-examples.noarch 
 
 
 from ctypes import cdll
-import pyinotify
-import multiprocessing
-import time
 from webptools import webplib as webp
 from pathlib import Path
 
+import pyinotify
+import multiprocessing
+import time
 import sys
 import argparse
-
 import os
 import signal
-
 import shutil
 
-class Ev(object):
-    # Event struct
+
+class Ev(object): # Event struct
     mask = ""
     pathname = ""
     dir = False
@@ -293,9 +292,8 @@ def log(path, str, mask=""):  # Логгер
     if log_level > 0:
         if log_level > 1:
             sys.stdout.write('%s\n' % (mask + " " + path + " " + str))
-        with open(path + result_path + "/images.log", "a") as file:
+        with open(path + log_file, "a") as file:
             file.write(str + "\n")
-        os.chown(path + result_path + "/images.log", uid, gid)
 
 
 def createParser (): # Разбор аргументов коммандной строки
@@ -315,7 +313,7 @@ def sigterm_handler(signum, frame):  # Завершение процессов
     event.mask = "SIG_TERM"
     sys.stdout.write("Waiting tasks to complete...\n")
 
-    if queue_in.qsize() > 0:
+    if queue_in.qsize() > 0: # Очистка очереди
         sys.stdout.write("Aborting %s tasks\n" % queue_in.qsize())
 
         while queue_in.qsize() > 0:
@@ -345,7 +343,8 @@ if __name__ == '__main__': # Required arguments
     ]
 
     result_path = "/webp"  # Подкаталог для webp копий
-    log_level = 3 # 2 - подробный, с выводом на экран. 1 - только инфо, в каталоге ~webp/images.log. 0 - Отключен
+    log_level = 3  # 2 - подробный, с выводом на экран. 1 - только инфо, в каталоге ~webp/images.log. 0 - Отключен
+    log_file = result_path + "/images.log" # Лог файл создается в каталоге для копий
     
     pidFile = '/tmp/pyinotify.pid'
 
@@ -371,7 +370,6 @@ if __name__ == '__main__': # Required arguments
 
         sys.stdout.write("Runned another copy pid: %d\n" % int(nums[0]))
         sys.exit(0)
-
     else:
         if 'stop' in namespace:
             if namespace.stop:  # Выход из запущенного процесса
@@ -420,7 +418,20 @@ if __name__ == '__main__': # Required arguments
     for pth in path:
         if Path(pth).is_dir():
             sys.stdout.write("==> Start monitoring %s\n" % pth)
-            convert_tree(pth)
+
+            if log_level > 0: # Создание каталога для копий, и лог файла
+                uid = os.stat(pth).st_uid
+                gid = os.stat(pth).st_gid
+
+                if not Path(pth + result_path).is_dir():
+                    Path(pth + result_path).mkdir(parents=True, exist_ok=True)
+                    os.chown(pth + result_path, uid, gid)
+                if not Path(pth + log_file).is_file():
+                    with open(pth + log_file, "w") as file:
+                        pass
+                    os.chown(pth + log_file, uid, gid)
+
+            convert_tree(pth) # Сканирование каталогов при старте
 
 
     wm.add_watch(path, mask, rec=True, auto_add=True)
