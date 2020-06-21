@@ -15,6 +15,8 @@
 # https://github.com/seb-m/pyinotify
 # https://github.com/scionoftech/webptools
 # https://docs.python.org/2/library/multiprocessing.html
+# https://www.ibm.com/developerworks/ru/library/l-inotify/
+# https://mnorin.com/inotify-v-bash.html
 #
 # yum install python-inotify.noarch python-inotify-examples.noarch 
 
@@ -48,6 +50,7 @@ class OnWriteHandler(pyinotify.ProcessEvent):
         self.queue_in = queue_in
 
     def process_IN_CLOSE_WRITE(self, event):
+        # Были закрыты файл или директория, открытые ранее на запись. 
         if all(not event.pathname.lower().endswith(ext) for ext in self.extensions):
             return
         if event.dir == True:
@@ -56,6 +59,7 @@ class OnWriteHandler(pyinotify.ProcessEvent):
         queue_in.put(event)  # добавляем элемент в очередь модификации
 
     def process_IN_DELETE(self, event):
+        # В наблюдаемой директории были удалены файл или поддиректория.
         if all(not event.pathname.lower().endswith(ext) for ext in self.extensions):
             return
         if event.dir == True:
@@ -64,6 +68,11 @@ class OnWriteHandler(pyinotify.ProcessEvent):
         queue_in.put(event)  # добавляем элемент в очередь удаления
 
     def process_IN_MOVED_TO(self, event):
+        # Файл или директория были перемещены в наблюдаемую директорию. 
+        # Событие включает в себя cookie, как и событие IN_MOVED_FROM. 
+        # Если файл или директория просто переименовать, то произойдут оба события. 
+        # Если объект перемещается в/из директории, за которой не установлено наблюдение, мы увидим только одно событие. 
+        # При перемещении или переименовании объекта наблюдение за ним продолжается.
         if all(not event.pathname.lower().endswith(ext) for ext in self.extensions) and event.dir == False:
             return
         event.mask = "IN_MOVED_TO"
@@ -71,6 +80,8 @@ class OnWriteHandler(pyinotify.ProcessEvent):
         queue_in.put(event)
 
     def process_IN_MOVED_FROM(self, event):
+        # Наблюдаемый объект или элемент в наблюдаемой директории был перемещен из места наблюдения. 
+        # Событие включает в себя cookie, по которому его можно сопоставить с событием IN_MOVED_TO.
         if all(not event.pathname.lower().endswith(ext) for ext in self.extensions) and event.dir == False:
             return
         event.mask = "IN_MOVED_FROM"
