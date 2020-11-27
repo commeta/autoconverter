@@ -50,7 +50,7 @@ startconverter() {
 
 
 scanimg() {
-    find $sitedir \( -iname "*.png" -o -iname "*.jpg" -o -iname "*.jpeg" \) -type f | while read file; do
+    find $sitedir \( -iname "*.png" -o -iname "*.jpg" -o -iname "*.jpeg" -o -iname "*.webp" \) -type f | while read file; do
         startconverter "$file"
     done
 }
