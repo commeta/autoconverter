@@ -1,7 +1,7 @@
 #/bin/bash
 
 # Convert all images files in subdirectories, to ~webp/ directory
-# apt install webp
+# apt install webp lsof
 # Usage ./image2webp.sh
 # cron nice -n 15 /bin/bash -lc /var/www/user/data/www/site.domain/core/image2webp.sh
 
