@@ -19,6 +19,8 @@
 # https://mnorin.com/inotify-v-bash.html
 #
 # yum install python-inotify.noarch python-inotify-examples.noarch 
+# apt install python3-pyinotify 
+
 
 
 from ctypes import cdll
