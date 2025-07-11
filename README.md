@@ -1,97 +1,165 @@
-# Autoconverter
-Background converting png or jpeg files to webp format on Linux.
+# WebP AutoConverter
 
-### Бета версия фонового конвертера графических файлов.
-Данная программа работает в фоновом режиме, ведет наблюдение за указанными каталогами.
-В случае появления в них файлов с расширениями jpeg|jpg|png, создает копии графических файлов в подкаталоге ~webp/
+A modern, efficient background service for converting PNG/JPEG images to WebP format on Linux systems.
 
-Массив с путями каталогов для наблюдения можно прописать в файле скрипта:
-```PYTHON
-    path = [
-        "/var/www/www-root/data/www/site.ru",
-        "/var/www/www-root/data/www/site2.ru"
-    ]
+## Features
+
+- **Architecture**: Built with Python 3.8+ using async/await patterns
+- **High Performance**: Multi-threaded conversion with configurable worker pools
+- **Smart Event Handling**: Debounced file system events to prevent duplicate processing
+- **Flexible Configuration**: YAML/JSON configuration files
+- **Comprehensive Logging**: Configurable logging levels and file output
+- **Metadata Preservation**: Optionally preserve EXIF data in converted images
+- **Graceful Shutdown**: Proper signal handling and cleanup
+- **Systemd Integration**: Ready-to-use service files
+
+## Installation
+
+### Prerequisites
+- Python 3.8+
+- Linux system with systemd (optional)
+
+### Install Dependencies
+```bash
+pip3 install -r requirements.txt
 ```
 
-#### Поддерживает: 
-копирование, переименование, перемещение, удаление файлов.
+### Basic Setup
+1. Copy the script to desired location
+2. Create configuration file:
+   ```bash
+   python3 autoconverter.py --create-config config.yaml
+   ```
+3. Edit configuration file to set your watch paths
+4. Run the converter:
+   ```bash
+   python3 autoconverter.py -c config.yaml
+   ```
 
-#### Требования:
-Linux, Python >= 3.5, Pyinotify, Webptools
-
-#### Установка зависимостей:
-```BASH
-pip3 install pyinotify webptools
+### System Service Installation
+Use the provided installation script:
+```bash
+chmod +x install.sh
+./install.sh
 ```
 
-#### Пример конфигурации NGINX для подмены на webp
+## Configuration
 
-```NGINX
-server {
-	server_name site.ru www.site.ru;
-	ssl_certificate "/var/www/httpd-cert/www-root/site.ru_le1.crtca";
-	ssl_certificate_key "/var/www/httpd-cert/www-root/site.ru_le1.key";
-	ssl_ciphers EECDH:+AES256:-3DES:RSA+AES:!NULL:!RC4;
-	ssl_prefer_server_ciphers on;
-	ssl_protocols TLSv1 TLSv1.1 TLSv1.2;
-	add_header Strict-Transport-Security "max-age=31536000;";
-	ssl_dhparam /etc/ssl/certs/dhparam4096.pem;
-	charset UTF-8;
-	index index.php index.html;
-	disable_symlinks if_not_owner from=$root_path;
-	include /etc/nginx/vhosts-includes/*.conf;
-	include /etc/nginx/vhosts-resources/site.ru/*.conf;
-	access_log /var/www/httpd-logs/site.ru.access.log;
-	error_log /var/www/httpd-logs/site.ru.error.log notice;
-	set $root_path /var/www/www-root/data/www/site.ru;
-	root $root_path;
-	location / {
-		location ~ [^/]\.ph(p\d*|tml)$ {
-			try_files /does_not_exists @fallback;
-		}
-		location ~* ^.+\.(ico|gif|svg|js|css|mp3|ogg|mpe?g|avi|zip|gz|bz2?|rar|swf|woff|woff2|ttf)$ {
-			try_files $uri $uri/ @fallback;
-			expires 365d;
-		}
-		location ~* ^.+\.(jpg|jpeg|png)$ {
-			set $ax 0;
-			if ( $http_accept ~* "webp" ) {
-			    set $ax 1;
-			}
-			if ( -e $root_path/webp$uri ){
-			    set $ax "${ax}1";
-			}
-			if ( $ax = "11" ) {
-			    rewrite ^ /webp$uri last;
-			    return  403;
-			}
-			expires 365d;
-			try_files $uri $uri/ @fallback;
-		}
-		location ^~ /webp/ {
-		    types { } default_type "image/webp";
-		    add_header Vary Accept;
-		    expires 365d;
-		    try_files $uri $uri/ @fallback;
-		}
-		location / {
-			try_files /does_not_exists @fallback;
-		}
-	}
-	location @fallback {
-		proxy_pass http://127.0.0.1:8080;
-		proxy_redirect http://127.0.0.1:8080 /;
-		proxy_set_header Host $host;
-		proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-		proxy_set_header X-Forwarded-Proto $scheme;
-		proxy_set_header X-Forwarded-Port $server_port;
-		access_log off;
-	}
-	gzip on;
-	gzip_comp_level 9;
-	gzip_disable "msie6";
-	gzip_vary on;
-	gzip_types text/plain text/css application/json application/x-javascript text/xml application/xml application/xml+rss text/javascript application/javascript;
-	listen xx.xx.xx.xx:xx ssl http2;
+All configuration is done via YAML or JSON files. Key settings:
+
+- `watch_paths`: List of directories to monitor
+- `output_subdir`: Subdirectory name for WebP files (default: "webp")
+- `webp_quality`: WebP quality level (0-100)
+- `max_workers`: Number of concurrent conversion threads
+- `debounce_time`: Delay before processing duplicate events
+
+## Usage
+
+### Command Line Options
+```bash
+python3 autoconverter.py [options]
+
+Options:
+  -c, --config CONFIG     Configuration file path
+  --create-config FILE    Create sample configuration file
+  -d, --daemon           Run as daemon
+  --pid-file FILE        PID file path
+```
+
+### Service Management
+```bash
+# Start service
+sudo systemctl start autoconverter
+
+# Stop service
+sudo systemctl stop autoconverter
+
+# Enable auto-start
+sudo systemctl enable autoconverter
+
+# Check status
+sudo systemctl status autoconverter
+
+# View logs
+sudo journalctl -u autoconverter -f
+```
+
+## NGINX Configuration
+
+The original NGINX configuration remains compatible:
+
+```nginx
+location ~* ^.+\.(jpg|jpeg|png)$ {
+    set $ax 0;
+    if ( $http_accept ~* "webp" ) {
+        set $ax 1;
+    }
+    if ( -e $root_path/webp$uri ){
+        set $ax "${ax}1";
+    }
+    if ( $ax = "11" ) {
+        rewrite ^ /webp$uri last;
+        return  403;
+    }
+    expires 365d;
+    try_files $uri $uri/ @fallback;
+}
+
+location ^~ /webp/ {
+    types { } default_type "image/webp";
+    add_header Vary Accept;
+    expires 365d;
+    try_files $uri $uri/ @fallback;
 }
 ```
+
+## Monitoring
+
+The service provides comprehensive logging:
+
+- **INFO**: Basic operation information
+- **DEBUG**: Detailed processing information
+- **WARNING**: Non-critical issues
+- **ERROR**: Critical errors
+
+Logs can be viewed via:
+- System journal: `journalctl -u autoconverter`
+- Log file: Check configured log file path
+- Console output: When running in foreground
+
+## Performance Optimization
+
+- Adjust `max_workers` based on CPU cores
+- Increase `debounce_time` for high-frequency file changes
+- Use `webp_lossless: false` for better compression
+- Monitor system resources and adjust accordingly
+
+## Troubleshooting
+
+### Common Issues
+
+1. **Permission Errors**: Ensure the service user has read/write access to watch paths
+2. **High CPU Usage**: Reduce `max_workers` or increase `debounce_time`
+3. **Missing Conversions**: Check file extensions in `supported_extensions`
+4. **Service Won't Start**: Verify configuration file syntax and paths
+
+### Debug Mode
+Run with debug logging to troubleshoot issues:
+```bash
+python3 autoconverter.py -c config.yaml --log-level DEBUG
+```
+
+## Migration from Old Version
+
+The new version is not directly compatible with the old script. To migrate:
+
+1. Stop the old service
+2. Note your current watch paths
+3. Install the new version
+4. Update configuration with your paths
+5. Start the new service
+6. Verify operation
+
+## License
+
+This project is provided as-is for educational and production use.
