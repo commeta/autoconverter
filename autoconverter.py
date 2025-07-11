@@ -1,451 +1,494 @@
 #!/usr/bin/env python3
-#
-# Usage:
-#   autoconverter.py [-h] [-s STOP] [-b BACKGROUND]
-#
-# Blocks monitoring |path| and its subdirectories for modifications on
-# files ending with suffix |*.jpg,*.png|. Run |cwebp| each time a modification
-# is detected. 
-#
-#
-# Dependencies:
-#   Linux, Python >= 3.5, Pyinotify, Webptools
-#
-# http://seb.dbzteam.org/pyinotify/
-# https://github.com/seb-m/pyinotify
-# https://github.com/scionoftech/webptools
-# https://docs.python.org/2/library/multiprocessing.html
-# https://www.ibm.com/developerworks/ru/library/l-inotify/
-# https://mnorin.com/inotify-v-bash.html
-#
-# yum install python-inotify.noarch python-inotify-examples.noarch 
-# apt install python3-pyinotify 
+"""
+Usage:
 
+python3 autoconverter.py [options]
 
+Options:
+  -c, --config CONFIG     Configuration file path
+  --create-config FILE    Create sample configuration file
+  -d, --daemon           Run as daemon
+  --pid-file FILE        PID file path
+  
+Blocks monitoring |path| and its subdirectories for modifications on
+files ending with suffix |*.jpg,*.png|. Run |cwebp| each time a modification
+is detected. 
+"""
 
-from ctypes import cdll
-from webptools import webplib as webp
-from pathlib import Path
-
-import pyinotify
-import multiprocessing
-import time
-import sys
+import asyncio
 import argparse
+import logging
 import os
+import sys
 import signal
 import shutil
+import time
+import json
+from pathlib import Path
+from typing import List, Dict, Set, Optional
+from dataclasses import dataclass, asdict
+from concurrent.futures import ThreadPoolExecutor
+import hashlib
+
+# Modern dependencies
+from watchdog.observers import Observer
+from watchdog.events import FileSystemEventHandler, FileSystemEvent
+from PIL import Image
+import yaml
 
 
-class Ev(object): # Event struct
-    mask = ""
-    pathname = ""
-    dir = False
-    wait = False
+@dataclass
+class Config:
+    """Configuration dataclass"""
+    watch_paths: List[str]
+    output_subdir: str = "webp"
+    supported_extensions: List[str] = None
+    webp_quality: int = 80
+    webp_method: int = 6
+    webp_lossless: bool = False
+    log_level: str = "INFO"
+    log_file: Optional[str] = None
+    max_workers: int = 4
+    debounce_time: float = 1.0
+    preserve_metadata: bool = True
+    
+    def __post_init__(self):
+        if self.supported_extensions is None:
+            self.supported_extensions = ['.jpg', '.jpeg', '.png']
 
 
-class OnWriteHandler(pyinotify.ProcessEvent):
-    # Создание очередей, слушатель inotify ядра
-    def my_init(self, path, extension, queue_in):
-        self.path = path
-        self.extensions = extension.split(',')
-        self.queue_in = queue_in
-
-    def process_IN_CLOSE_WRITE(self, event):
-        # Были закрыты файл или директория, открытые ранее на запись. 
-        if all(not event.pathname.lower().endswith(ext) for ext in self.extensions):
-            return
-        if event.dir == True:
-            return
-        event.mask = "IN_CLOSE_WRITE"
-        queue_in.put(event)  # добавляем элемент в очередь модификации
-
-    def process_IN_DELETE(self, event):
-        # В наблюдаемой директории были удалены файл или поддиректория.
-        if all(not event.pathname.lower().endswith(ext) for ext in self.extensions):
-            return
-        if event.dir == True:
-            return
-        event.mask = "IN_DELETE"
-        queue_in.put(event)  # добавляем элемент в очередь удаления
-
-    def process_IN_MOVED_TO(self, event):
-        # Файл или директория были перемещены в наблюдаемую директорию. 
-        # Событие включает в себя cookie, как и событие IN_MOVED_FROM. 
-        # Если файл или директория просто переименовать, то произойдут оба события. 
-        # Если объект перемещается в/из директории, за которой не установлено наблюдение, мы увидим только одно событие. 
-        # При перемещении или переименовании объекта наблюдение за ним продолжается.
-        if all(not event.pathname.lower().endswith(ext) for ext in self.extensions) and event.dir == False:
-            return
-        event.mask = "IN_MOVED_TO"
-        # добавляем элемент в очередь, модификация или переименование
-        queue_in.put(event)
-
-    def process_IN_MOVED_FROM(self, event):
-        # Наблюдаемый объект или элемент в наблюдаемой директории был перемещен из места наблюдения. 
-        # Событие включает в себя cookie, по которому его можно сопоставить с событием IN_MOVED_TO.
-        if all(not event.pathname.lower().endswith(ext) for ext in self.extensions) and event.dir == False:
-            return
-        event.mask = "IN_MOVED_FROM"
-        event.wait = True
-        # добавляем элемент в очередь, удаление или переименование
-        queue_in.put(event)
-
-
-def converter(queue_in, path): # Обработчик очереди в отдельном процессе
-    # Смена приоритета
-    pid = libc.getpid()
-    libc.setpriority(0, pid, 20)
-
-    filter = {}
-    moved = {}
-
-    while True:
-        event = queue_in.get()  # Извлекаем элемент из очереди
-        mask = event.mask
-        is_dir = event.dir
-        item = event.pathname
+class ImageConverter:
+    """Modern image converter using Pillow"""
+    
+    def __init__(self, config: Config):
+        self.config = config
+        self.logger = logging.getLogger(__name__)
         
-        if mask == "SIG_TERM":
-            break
-
-
-        # Удалим из фильтра события старше 2-х секунд
-        for key, value in list(filter.items()):
-            if value['time'] + 2 < time.time():
-                del filter[key]
-
-
-        for p in path:
-            if (item + "/").startswith(p + "/"):
-                #Init
-                extension = Path(item).suffix.lower()
-                dest = p + result_path
-                dest_item = item.replace(p, dest)
-                base_dest_item = Path(dest_item).parent
-                base_item = Path(item).parent
-
-                uid = os.stat(p).st_uid
-                gid = os.stat(p).st_gid
-
-
-                if not Path(dest).is_dir():  # создает каталог если нету /webp
-                    Path(dest).mkdir(parents=True, exist_ok=True)
-                    os.chown(dest, uid, gid)
-
-
-                if item.startswith(dest):  # если это /webp то выход
-                    break
+    def convert_to_webp(self, source_path: Path, dest_path: Path) -> bool:
+        """Convert image to WebP format"""
+        try:
+            # Ensure destination directory exists
+            dest_path.parent.mkdir(parents=True, exist_ok=True)
+            
+            # Open and convert image
+            with Image.open(source_path) as img:
+                # Convert to RGB if necessary (for PNG with transparency)
+                if img.mode in ('RGBA', 'LA', 'P'):
+                    if source_path.suffix.lower() == '.png':
+                        # Keep transparency for PNG
+                        img = img.convert('RGBA')
+                    else:
+                        # Convert to RGB for JPEG
+                        img = img.convert('RGB')
                 
-
-                if mask == "IN_MOVED_FROM": # Перемещение файла или каталога
-                    if event.wait == False:
-                        if item in moved:  # Внутреннее - переименовываем
-                            # Проверить перемещение из разных точек наблюдения
-                            moved_dest_item = moved[item].replace(p, dest)
-                            log(p, "Rename: " + dest_item,
-                                mask="IN_MOVED_FROM Rename")
-                            Path(dest_item).rename(moved_dest_item)
-                            del moved[item]
-                            break
-                            
-                        else: # Внешнее - удаляем
-                            log(p, "Delete: " + dest_item,
-                                mask="IN_MOVED_FROM Delete")
-                            if Path(dest_item).is_file():
-                                Path(dest_item).unlink()
-                                rm_empty_dir(base_dest_item)
-                            else:
-                                rm_tree(dest_item)
-                            break
-
-                    if event.wait == True:  # Чтобы понять направление подождем IN_MOVED_TO
-                        event.wait = False
-                        queue_in.put(event)
-                        break
-
-
-                if mask == "IN_DELETE" and Path(dest_item).is_file():
-                    log(p, "Delete: " + dest_item, mask="IN_DELETE Delete")
-                    Path(dest_item).unlink()  # Удаляем файл
-
-                    # Удаляем подкаталог если пустой
-                    if rm_empty_dir(base_dest_item):
-                        log(p, "Delete dir: " +
-                            str(base_dest_item), mask="IN_DELETE Delete dir")
-
-
-                # Если дубль события то выходим
-                if Path(item).exists():
-                    if item in filter and filter[item]['st_mtime'] == Path(item).stat().st_mtime and filter[item]['mask'] == mask:
-                        break
-                    filter[item] = {'time': time.time(), 'st_mtime': Path(
-                        item).stat().st_mtime, 'mask': mask}
-                else:
-                    break
-
-
-                if mask == "IN_MOVED_TO":
-                    src_pathname = getattr(event, 'src_pathname', False)
-
-                    if src_pathname != False: # Переименование, на следующей итерации, хотя лучше здесь
-                        moved[src_pathname] = item
-                        break
-                    else: # Перемещение
-                        if Path(item).is_dir():  # Если каталог то запускаем сканер
-                            convert_tree(p)
-                            break
-                        else:  # Если файл то стартуем конвертер
-                            mask = "IN_CLOSE_WRITE"
-
-
-                if mask == "IN_CLOSE_WRITE" and Path(item).is_file():
-                    # отсеиваем глюки, дубликаты, проверка предыдущего цикла
-                    if Path(dest_item).is_file() and Path(dest_item).stat().st_mtime > Path(item).stat().st_mtime:
-                        break
-                    if not Path(item).is_file():
-                        break
-
-                    log(p, "Converting: " + dest_item,
-                        mask="IN_CLOSE_WRITE Converting")
-
-                  
-                    if not Path(base_dest_item).is_dir():  # создаем подкаталог если нету
-                        Path(base_dest_item).mkdir(parents=True, exist_ok=True)
-                        os.chown(base_dest_item, uid, gid)
-
-                    if extension == '.jpg' or extension == '.jpeg':
-                        webp.cwebp(item, dest_item, "-quiet -pass 10 -m 6 -mt -q 80")
-                        os.chown(dest_item, uid, gid)
-
-                    if extension == '.png':
-                        webp.cwebp(
-                            item, dest_item,
-                            "-quiet -pass 10 -m 6 -alpha_q 100 -mt -alpha_filter best -alpha_method 1 -q 80")
-                        os.chown(dest_item, uid, gid)
-                    
-                    break
-                break
-
-        # Сообщаем, что элемент очереди queue_in обработан с помощью метода task_done
-        queue_in.task_done()
-
-
-def rm_tree(pth):  # удаление подкаталогов
-    shutil.rmtree(pth)
-
-
-def rm_empty_dir(pth): # Удаляем подкаталог если пустой
-    for child in pth.glob("*"):
-        if child.is_file() or child.is_dir():
+                # Prepare WebP save options
+                save_options = {
+                    'format': 'WebP',
+                    'quality': self.config.webp_quality,
+                    'method': self.config.webp_method,
+                    'lossless': self.config.webp_lossless
+                }
+                
+                # Preserve metadata if requested
+                if self.config.preserve_metadata:
+                    save_options['exif'] = img.info.get('exif', b'')
+                
+                # Save as WebP
+                img.save(dest_path, **save_options)
+                
+            # Copy file timestamps and permissions
+            self._copy_file_metadata(source_path, dest_path)
+            
+            self.logger.info(f"Converted: {source_path} -> {dest_path}")
+            return True
+            
+        except Exception as e:
+            self.logger.error(f"Failed to convert {source_path}: {e}")
             return False
-
-    if not str(pth).endswith(result_path):
-        pth.rmdir()
-        return True
-
-
-def convert_tree(pth): # Создание очереди при запуске, или событии с каталогами
-    global queue_in, extension
-
-    extensions = extension.split(',')
-    event = Ev()
-    dest = pth + result_path
-
-    for child in Path(pth).glob('**/*'):
-        # если это /webp то удалим отсутствующие копии
-        if(str(child) + "/").startswith(dest + "/") and child.is_file():
-            dest_item = str(child).replace(dest, pth)
-            if not Path(dest_item).exists():
-                if child.is_file():
-                    log(pth, "Start convert_tree on Init: " + str(child),
-                        mask="CONVERT_THREE Delete")
-                    child.unlink()
-
-                elif child.is_dir():
-                    log(pth, "Start convert_tree on Init: " + str(child),
-                        mask="CONVERT_THREE Delete dir")
-                    rm_tree(str(child))
-            continue
-
-        if child.is_file() and all(not str(child).lower().endswith(ext) for ext in extensions):
-            continue
-
-        if child.is_file():  # Добавить в очередь если отсутствует или новее
-            dest_item = str(child).replace(pth, dest)
-
-            if not Path(dest_item).is_file():
-                log(pth, "Start convert_tree on Init: " +
-                    str(child))
-
-                event.mask = "IN_CLOSE_WRITE"
-                event.pathname = str(child)
-                queue_in.put(event)
-                time.sleep(0.1)
-            elif Path(dest_item).stat().st_mtime < Path(child).stat().st_mtime:
-                log(pth, "Start convert_tree on Init: " +
-                    str(child))
-
-                event.mask = "IN_CLOSE_WRITE"
-                event.pathname = str(child)
-                queue_in.put(event)
-                time.sleep(0.1)
-
-
-def log(path, str, mask=""):  # Логгер
-    global result_path, log_level
-
-    uid = os.stat(path).st_uid
-    gid = os.stat(path).st_gid
-
-    if not Path(path + result_path).is_dir():
-        Path(path + result_path).mkdir(parents=True, exist_ok=True)
-        os.chown(path + result_path, uid, gid)
-
-    if log_level > 0:
-        if log_level > 1:
-            sys.stdout.write('%s\n' % (mask + " " + path + " " + str))
-        with open(path + log_file, "a") as file:
-            file.write(str + "\n")
-
-
-def createParser (): # Разбор аргументов коммандной строки
-    parser = argparse.ArgumentParser()
-    parser.add_argument('-s', '--stop', type=str, default=False)
-    parser.add_argument('-b', '--background', type=str, default=False)
- 
-    return parser
-
-
-def sigterm_handler(signum, frame):  # Завершение процессов
-    global queue_in, notifier, pidFile, cons_p
-
-    notifier.stop()
-
-    event = Ev()
-    event.mask = "SIG_TERM"
-    sys.stdout.write("Waiting tasks to complete...\n")
-
-    if queue_in.qsize() > 0: # Очистка очереди
-        sys.stdout.write("Aborting %s tasks\n" % queue_in.qsize())
-
-        while queue_in.qsize() > 0:
-            sys.stdout.write("%s " % queue_in.qsize() )
-            queue_in.get(False)
-            queue_in.task_done()
-
-    queue_in.put(event)
-    time.sleep(2)
-    queue_in.close()
-
-    cons_p.terminate()
-    sys.stdout.write("Shutting down...\n")
     
-    if Path(pidFile).is_file():
-        Path(pidFile).unlink()
+    def _copy_file_metadata(self, source: Path, dest: Path):
+        """Copy file metadata from source to destination"""
+        try:
+            stat = source.stat()
+            os.utime(dest, (stat.st_atime, stat.st_mtime))
+            os.chmod(dest, stat.st_mode)
+            os.chown(dest, stat.st_uid, stat.st_gid)
+        except (OSError, PermissionError) as e:
+            self.logger.warning(f"Could not copy metadata from {source} to {dest}: {e}")
+
+
+class FileEventHandler(FileSystemEventHandler):
+    """Modern file system event handler"""
     
-    sys.exit(0)
-
-
-if __name__ == '__main__': # Required arguments
-    extension = ".jpg,.jpeg,.png"
-
-    path = [
-        "/var/www/www-root/data/www/site.ru",
-        "/var/www/www-root/data/www/site2.ru"
-    ]
-
-    result_path = "/webp"  # Подкаталог для webp копий
-    log_level = 3  # 2 - подробный, с выводом на экран. 1 - только инфо, в каталоге ~webp/images.log. 0 - Отключен
-    log_file = result_path + "/images.log" # Лог файл создается в каталоге для копий
+    def __init__(self, config: Config, event_queue: asyncio.Queue):
+        super().__init__()
+        self.config = config
+        self.event_queue = event_queue
+        self.logger = logging.getLogger(__name__)
+        self.supported_extensions = set(ext.lower() for ext in config.supported_extensions)
+        
+    def _should_process_file(self, file_path: Path) -> bool:
+        """Check if file should be processed"""
+        if not file_path.exists() or file_path.is_dir():
+            return False
+            
+        # Skip if file is in output directory
+        if f"/{self.config.output_subdir}/" in str(file_path):
+            return False
+            
+        # Check extension
+        return file_path.suffix.lower() in self.supported_extensions
     
-    pidFile = '/tmp/pyinotify.pid'
+    def _queue_event(self, event_type: str, file_path: Path):
+        """Queue an event for processing"""
+        try:
+            self.event_queue.put_nowait({
+                'type': event_type,
+                'path': file_path,
+                'timestamp': time.time()
+            })
+        except asyncio.QueueFull:
+            self.logger.warning(f"Event queue full, dropping event for {file_path}")
+    
+    def on_created(self, event: FileSystemEvent):
+        if not event.is_directory:
+            file_path = Path(event.src_path)
+            if self._should_process_file(file_path):
+                self._queue_event('created', file_path)
+    
+    def on_modified(self, event: FileSystemEvent):
+        if not event.is_directory:
+            file_path = Path(event.src_path)
+            if self._should_process_file(file_path):
+                self._queue_event('modified', file_path)
+    
+    def on_moved(self, event: FileSystemEvent):
+        if not event.is_directory:
+            src_path = Path(event.src_path)
+            dest_path = Path(event.dest_path)
+            
+            # Handle source file (deletion)
+            if self._should_process_file(src_path):
+                self._queue_event('deleted', src_path)
+            
+            # Handle destination file (creation)
+            if self._should_process_file(dest_path):
+                self._queue_event('moved', dest_path)
+    
+    def on_deleted(self, event: FileSystemEvent):
+        if not event.is_directory:
+            file_path = Path(event.src_path)
+            if self._should_process_file(file_path):
+                self._queue_event('deleted', file_path)
 
-    parser = createParser()
-    namespace = parser.parse_args(sys.argv[1:])
 
-    libc = cdll.LoadLibrary("libc.so.6")
-
-    if Path(pidFile).is_file():  # Проверка запуска копии, вывод справки
-        with open(pidFile, "r") as file:
-            nums = file.read().splitlines()
-        if 'stop' in namespace:
-            if namespace.stop:  # Выход из запущенного процесса
-                pid = int(nums[0])
-                sys.stdout.write("Terminate another copy pid: %d\n" % pid)
-
-                if Path("/proc/" + nums[0]).exists():
-                    os.kill(pid, signal.SIGTERM)
+class AutoConverter:
+    """Main autoconverter class"""
+    
+    def __init__(self, config: Config):
+        self.config = config
+        self.logger = self._setup_logging()
+        self.event_queue = asyncio.Queue(maxsize=1000)
+        self.converter = ImageConverter(config)
+        self.observer = Observer()
+        self.executor = ThreadPoolExecutor(max_workers=config.max_workers)
+        self.pending_events: Dict[str, float] = {}
+        self.running = False
+        
+    def _setup_logging(self) -> logging.Logger:
+        """Setup logging configuration"""
+        logger = logging.getLogger(__name__)
+        logger.setLevel(getattr(logging, self.config.log_level.upper()))
+        
+        # Console handler
+        console_handler = logging.StreamHandler()
+        console_handler.setLevel(logging.INFO)
+        
+        # File handler (if specified)
+        if self.config.log_file:
+            file_handler = logging.FileHandler(self.config.log_file)
+            file_handler.setLevel(logging.DEBUG)
+            formatter = logging.Formatter(
+                '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+            )
+            file_handler.setFormatter(formatter)
+            logger.addHandler(file_handler)
+        
+        # Simple formatter for console
+        console_formatter = logging.Formatter('%(levelname)s: %(message)s')
+        console_handler.setFormatter(console_formatter)
+        logger.addHandler(console_handler)
+        
+        return logger
+    
+    def _get_webp_path(self, original_path: Path) -> Path:
+        """Get corresponding WebP path for original file"""
+        for watch_path in self.config.watch_paths:
+            watch_path = Path(watch_path)
+            if original_path.is_relative_to(watch_path):
+                relative_path = original_path.relative_to(watch_path)
+                webp_path = watch_path / self.config.output_subdir / relative_path
+                return webp_path.with_suffix('.webp')
+        
+        # Fallback
+        return original_path.with_suffix('.webp')
+    
+    async def _process_events(self):
+        """Process file system events"""
+        while self.running:
+            try:
+                # Get event with timeout
+                event = await asyncio.wait_for(self.event_queue.get(), timeout=1.0)
                 
-                if Path(pidFile).is_file():
-                    Path(pidFile).unlink()
-                    sys.exit(0)
-
-        sys.stdout.write("Runned another copy pid: %d\n" % int(nums[0]))
-        sys.exit(0)
-    else:
-        if 'stop' in namespace:
-            if namespace.stop:  # Выход из запущенного процесса
-                sys.stdout.write('Not started another copy\n')
-                sys.exit(0)
-
-
-    pid = libc.getpid()
-    with open(pidFile, "w") as file:
-        file.write(str(pid))
-    sys.stdout.write("Start monitoring pid %d (type c^c to exit)\n" % pid)
-
-
-    if 'background' in namespace: # Запуск в фоновом режиме
-        if namespace.background:
-            ppid = os.fork()
-
-            if ppid > 0:
-                sys.exit(0)
+                file_path = event['path']
+                event_type = event['type']
+                timestamp = event['timestamp']
+                
+                # Debounce events
+                file_key = str(file_path)
+                if file_key in self.pending_events:
+                    # Skip if we have a recent event for this file
+                    if timestamp - self.pending_events[file_key] < self.config.debounce_time:
+                        continue
+                
+                self.pending_events[file_key] = timestamp
+                
+                # Process event
+                if event_type in ['created', 'modified', 'moved']:
+                    await self._handle_file_change(file_path)
+                elif event_type == 'deleted':
+                    await self._handle_file_deletion(file_path)
+                
+                # Clean up old pending events
+                current_time = time.time()
+                self.pending_events = {
+                    k: v for k, v in self.pending_events.items()
+                    if current_time - v < self.config.debounce_time * 2
+                }
+                
+            except asyncio.TimeoutError:
+                continue
+            except Exception as e:
+                self.logger.error(f"Error processing event: {e}")
+    
+    async def _handle_file_change(self, file_path: Path):
+        """Handle file creation/modification"""
+        if not file_path.exists():
+            return
+        
+        webp_path = self._get_webp_path(file_path)
+        
+        # Check if conversion is needed
+        if (webp_path.exists() and 
+            webp_path.stat().st_mtime > file_path.stat().st_mtime):
+            return
+        
+        # Convert in thread pool
+        loop = asyncio.get_event_loop()
+        success = await loop.run_in_executor(
+            self.executor, 
+            self.converter.convert_to_webp, 
+            file_path, 
+            webp_path
+        )
+        
+        if success:
+            self.logger.info(f"Converted {file_path} to {webp_path}")
+    
+    async def _handle_file_deletion(self, file_path: Path):
+        """Handle file deletion"""
+        webp_path = self._get_webp_path(file_path)
+        
+        if webp_path.exists():
+            try:
+                webp_path.unlink()
+                self.logger.info(f"Removed {webp_path}")
+                
+                # Clean up empty directories
+                self._cleanup_empty_dirs(webp_path.parent)
+                
+            except Exception as e:
+                self.logger.error(f"Failed to remove {webp_path}: {e}")
+    
+    def _cleanup_empty_dirs(self, directory: Path):
+        """Remove empty directories"""
+        try:
+            if directory.exists() and directory.is_dir():
+                if not any(directory.iterdir()):  # Directory is empty
+                    # Don't remove the main output directory
+                    if directory.name != self.config.output_subdir:
+                        directory.rmdir()
+                        self.logger.debug(f"Removed empty directory: {directory}")
+                        # Recursively clean parent directories
+                        self._cleanup_empty_dirs(directory.parent)
+        except Exception as e:
+            self.logger.debug(f"Could not remove directory {directory}: {e}")
+    
+    def _scan_existing_files(self):
+        """Scan existing files and queue for conversion if needed"""
+        self.logger.info("Scanning existing files...")
+        
+        for watch_path in self.config.watch_paths:
+            watch_path = Path(watch_path)
+            if not watch_path.exists():
+                self.logger.warning(f"Watch path does not exist: {watch_path}")
+                continue
+                
+            for file_path in watch_path.rglob('*'):
+                if (file_path.is_file() and 
+                    file_path.suffix.lower() in self.config.supported_extensions):
+                    
+                    # Skip files in output directory
+                    if f"/{self.config.output_subdir}/" in str(file_path):
+                        continue
+                    
+                    webp_path = self._get_webp_path(file_path)
+                    
+                    # Queue for conversion if needed
+                    if (not webp_path.exists() or 
+                        webp_path.stat().st_mtime < file_path.stat().st_mtime):
+                        
+                        try:
+                            self.event_queue.put_nowait({
+                                'type': 'created',
+                                'path': file_path,
+                                'timestamp': time.time()
+                            })
+                        except asyncio.QueueFull:
+                            self.logger.warning(f"Queue full, skipping {file_path}")
+    
+    def _setup_file_watcher(self):
+        """Setup file system watcher"""
+        handler = FileEventHandler(self.config, self.event_queue)
+        
+        for watch_path in self.config.watch_paths:
+            watch_path = Path(watch_path)
+            if watch_path.exists():
+                self.observer.schedule(handler, str(watch_path), recursive=True)
+                self.logger.info(f"Watching: {watch_path}")
             else:
-                ppid = libc.getpid()
-                sys.stdout.write("Start in background %d\n" % (ppid))
-                with open(pidFile, "w") as file:
-                    file.write(str(ppid))
-                sys.stdout = open('/dev/null', 'w')
+                self.logger.warning(f"Watch path does not exist: {watch_path}")
+    
+    def _setup_signal_handlers(self):
+        """Setup signal handlers for graceful shutdown"""
+        def signal_handler(signum, frame):
+            self.logger.info(f"Received signal {signum}, shutting down...")
+            self.stop()
+        
+        signal.signal(signal.SIGINT, signal_handler)
+        signal.signal(signal.SIGTERM, signal_handler)
+    
+    async def start(self):
+        """Start the autoconverter"""
+        self.logger.info("Starting AutoConverter...")
+        self.running = True
+        
+        # Setup signal handlers
+        self._setup_signal_handlers()
+        
+        # Setup file watcher
+        self._setup_file_watcher()
+        
+        # Start observer
+        self.observer.start()
+        
+        # Scan existing files
+        self._scan_existing_files()
+        
+        # Start event processing
+        await self._process_events()
+    
+    def stop(self):
+        """Stop the autoconverter"""
+        self.logger.info("Stopping AutoConverter...")
+        self.running = False
+        self.observer.stop()
+        self.observer.join()
+        self.executor.shutdown(wait=True)
 
 
-    queue_in = multiprocessing.JoinableQueue()  # объект очереди
-
-    # создаем подпроцесс для клиентской функции
-    cons_p = multiprocessing.Process(target=converter, args=(queue_in, path))
-    cons_p.daemon = True  # ставим флаг, что данный процесс является демоническим
-    cons_p.start()  # стартуем процесс
-
-    # Blocks monitoring
-    mask = pyinotify.IN_DELETE | pyinotify.IN_MOVED_TO | pyinotify.IN_MOVED_FROM | pyinotify.IN_CLOSE_WRITE
-    wm = pyinotify.WatchManager()
-    handler = OnWriteHandler(path=path, extension=extension, queue_in=queue_in)
-    notifier = pyinotify.Notifier(wm, default_proc_fun=handler)
-
-    # Обработка сигналов завершения
-    signal.signal(signal.SIGINT, sigterm_handler)
-    signal.signal(signal.SIGTERM, sigterm_handler)
-
-    time.sleep(0.4)
-    for pth in path:
-        if Path(pth).is_dir():
-            sys.stdout.write("==> Start monitoring %s\n" % pth)
-
-            if log_level > 0: # Создание каталога для копий, и лог файла
-                uid = os.stat(pth).st_uid
-                gid = os.stat(pth).st_gid
-
-                if not Path(pth + result_path).is_dir():
-                    Path(pth + result_path).mkdir(parents=True, exist_ok=True)
-                    os.chown(pth + result_path, uid, gid)
-                if not Path(pth + log_file).is_file():
-                    with open(pth + log_file, "w") as file:
-                        pass
-                    os.chown(pth + log_file, uid, gid)
-
-            convert_tree(pth) # Сканирование каталогов при старте
+def load_config(config_path: Optional[str] = None) -> Config:
+    """Load configuration from file or use defaults"""
+    if config_path and Path(config_path).exists():
+        with open(config_path, 'r') as f:
+            if config_path.endswith('.yaml') or config_path.endswith('.yml'):
+                config_data = yaml.safe_load(f)
+            else:
+                config_data = json.load(f)
+        return Config(**config_data)
+    else:
+        # Default configuration
+        return Config(
+            watch_paths=[
+                "/var/www/www-root/data/www/site.ru",
+                "/var/www/www-root/data/www/site2.ru"
+            ]
+        )
 
 
-    wm.add_watch(path, mask, rec=True, auto_add=True)
-    notifier.loop()
+def create_sample_config(config_path: str):
+    """Create a sample configuration file"""
+    config = Config(
+        watch_paths=[
+            "/path/to/watch1",
+            "/path/to/watch2"
+        ],
+        output_subdir="webp",
+        supported_extensions=[".jpg", ".jpeg", ".png"],
+        webp_quality=80,
+        webp_method=6,
+        webp_lossless=False,
+        log_level="INFO",
+        log_file="/var/log/autoconverter.log",
+        max_workers=4,
+        debounce_time=1.0,
+        preserve_metadata=True
+    )
+    
+    with open(config_path, 'w') as f:
+        if config_path.endswith('.yaml') or config_path.endswith('.yml'):
+            yaml.dump(asdict(config), f, default_flow_style=False)
+        else:
+            json.dump(asdict(config), f, indent=2)
+    
+    print(f"Sample configuration created at: {config_path}")
+
+
+async def main():
+    """Main entry point"""
+    parser = argparse.ArgumentParser(description="Modern WebP AutoConverter")
+    parser.add_argument('-c', '--config', type=str, help='Configuration file path')
+    parser.add_argument('--create-config', type=str, help='Create sample configuration file')
+    parser.add_argument('-d', '--daemon', action='store_true', help='Run as daemon')
+    parser.add_argument('--pid-file', type=str, default='/tmp/autoconverter.pid', 
+                       help='PID file path')
+    
+    args = parser.parse_args()
+    
+    if args.create_config:
+        create_sample_config(args.create_config)
+        return
+    
+    # Load configuration
+    config = load_config(args.config)
+    
+    # Create PID file
+    if args.daemon:
+        with open(args.pid_file, 'w') as f:
+            f.write(str(os.getpid()))
+    
+    # Start autoconverter
+    autoconverter = AutoConverter(config)
+    
+    try:
+        await autoconverter.start()
+    except KeyboardInterrupt:
+        autoconverter.stop()
+    finally:
+        # Clean up PID file
+        if args.daemon and Path(args.pid_file).exists():
+            Path(args.pid_file).unlink()
+
+
+if __name__ == '__main__':
+    asyncio.run(main())
