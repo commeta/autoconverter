@@ -1,0 +1,16 @@
+[Unit]
+Description=WebP AutoConverter Service
+After=network.target
+
+[Service]
+Type=simple
+User=www-data
+Group=www-data
+WorkingDirectory=/opt/autoconverter
+ExecStart=/usr/bin/python3 /opt/autoconverter/autoconverter.py -c /etc/autoconverter/config.yaml -d
+PIDFile=/tmp/autoconverter.pid
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

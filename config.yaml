@@ -1,0 +1,30 @@
+# AutoConverter Configuration
+watch_paths:
+  - "/var/www/www-root/data/www/site.ru"
+  - "/var/www/www-root/data/www/site2.ru"
+  - "/path/to/your/images"
+
+# Output directory name (created as subdirectory in each watch path)
+output_subdir: "webp"
+
+# Supported file extensions
+supported_extensions:
+  - ".jpg"
+  - ".jpeg"
+  - ".png"
+
+# WebP conversion settings
+webp_quality: 80          # Quality level (0-100)
+webp_method: 6            # Compression method (0-6, higher = better compression)
+webp_lossless: false      # Use lossless compression
+
+# Logging configuration
+log_level: "INFO"         # DEBUG, INFO, WARNING, ERROR
+log_file: "/var/log/autoconverter.log"  # Optional log file
+
+# Performance settings
+max_workers: 4            # Number of concurrent conversion threads
+debounce_time: 1.0        # Seconds to wait before processing duplicate events
+
+# Metadata preservation
+preserve_metadata: true   # Keep EXIF data in converted images
